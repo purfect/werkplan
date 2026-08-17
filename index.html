@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Werkplan - Technisches Zeichnen</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">W</span><div><strong>Werkplan</strong><small>Technisches Zeichnen</small></div></div>
+    <div class="file-actions">
+      <button id="newProject" class="text-button">Neu</button>
+      <button id="openProject" class="text-button">Laden</button>
+      <button id="saveProject" class="primary-button">Speichern</button>
+      <button id="exportSvg" class="icon-button" title="Zeichnung als SVG exportieren">↗</button>
+      <input id="fileInput" type="file" accept=".werkplan,.json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="sidebar left-panel">
+      <div class="panel-heading"><span>Werkzeuge</span><kbd>1—6</kbd></div>
+      <div class="tool-grid" role="toolbar" aria-label="Werkzeuge">
+        <button class="tool-button active" data-tool="select"><span class="tool-icon">⌖</span><span>Auswahl</span><kbd>1</kbd></button>
+        <button class="tool-button" data-tool="line"><span class="tool-icon">╱</span><span>Linie</span><kbd>2</kbd></button>
+        <button class="tool-button" data-tool="polyline"><span class="tool-icon">⌁</span><span>Polylinie</span><kbd>3</kbd></button>
+        <button class="tool-button" data-tool="rect"><span class="tool-icon">□</span><span>Rechteck</span><kbd>4</kbd></button>
+        <button class="tool-button" data-tool="dimension"><span class="tool-icon">↔</span><span>Bema&szlig;ung</span><kbd>5</kbd></button>
+        <button class="tool-button" data-tool="text"><span class="tool-icon">T</span><span>Text</span><kbd>6</kbd></button>
+      </div>
+
+      <div class="section-divider"></div>
+      <div class="panel-heading"><span>Linienstil</span></div>
+      <div class="line-styles">
+        <button class="style-button active" data-style="solid"><i class="line-preview solid"></i>Volllinie</button>
+        <button class="style-button" data-style="dashed"><i class="line-preview dashed"></i>Strichlinie</button>
+        <button class="style-button" data-style="center"><i class="line-preview center"></i>Achse</button>
+      </div>
+      <label class="field-label" for="strokeWidth">St&auml;rke</label>
+      <div class="range-row"><input id="strokeWidth" type="range" min="0.25" max="2.5" step="0.25" value="0.75"><output id="strokeOutput">0,75 mm</output></div>
+      <label class="field-label" for="strokeColor">Farbe</label>
+      <div class="color-row"><input id="strokeColor" type="color" value="#263238"><span>Linienfarbe</span></div>
+
+      <div id="lineLengthPanel" hidden>
+        <div class="section-divider"></div>
+        <div class="panel-heading"><span>Ziel&shy;l&auml;nge</span></div>
+        <div class="reference-row">
+          <input id="targetLength" type="number" min="1" step="10" placeholder="frei">
+          <span>mm</span>
+        </div>
+        <div class="scale-note">Leer = frei zeichnen</div>
+      </div>
+
+      <div class="section-divider"></div>
+      <div class="panel-heading"><span>Ansicht</span></div>
+      <div class="view-actions"><button id="zoomOut" class="small-button">−</button><strong id="zoomLabel">100%</strong><button id="zoomIn" class="small-button">+</button><button id="fitView" class="fit-button">Einpassen</button></div>
+      <label class="check-row"><input id="gridToggle" type="checkbox" checked> Raster anzeigen</label>
+      <label class="check-row"><input id="snapToggle" type="checkbox" checked> Am Raster einrasten</label>
+    </aside>
+
+    <section class="drawing-area">
+      <div class="canvas-toolbar"><span id="toolHint">Auswahl aktiv</span><span class="canvas-meta">A3 quer &middot; <span id="scaleMeta">1:20</span></span></div>
+      <div id="canvasWrap" class="canvas-wrap">
+        <svg id="drawingCanvas" viewBox="0 0 1200 760" aria-label="Technische Zeichenfl&auml;che">
+          <defs><pattern id="gridSmall" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="#d7e0e1" stroke-width="0.6"/></pattern><pattern id="gridLarge" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#gridSmall)"/><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#b5c5c5" stroke-width="1"/></pattern></defs>
+          <rect id="gridLayer" width="1200" height="760" fill="url(#gridLarge)"/>
+          <g id="drawingLayer"></g><g id="previewLayer"></g>
+        </svg>
+        <div id="emptyState" class="empty-state"><span class="empty-icon">+</span><strong>Zeichnung beginnen</strong><span>W&auml;hle links ein Werkzeug und ziehe auf der Fl&auml;che.</span></div>
+      </div>
+      <div class="statusbar"><span><b class="status-dot"></b><span id="statusText">Bereit</span></span><span id="cursorCoords">X 0,00 m &nbsp; Y 0,00 m</span><span id="gridStatus">Raster 100 mm</span></div>
+    </section>
+
+    <aside class="sidebar right-panel">
+      <div class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></div>
+      <div id="propertyPanel" class="property-panel"><div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div></div>
+      <div class="section-divider"></div>
+      <div class="panel-heading"><span>Projekt</span></div>
+      <label class="field-label" for="projectName">Name</label><input id="projectName" class="text-input" value="Bush&auml;uschen - Entwurf 01">
+      <div class="project-stats"><div><span>Objekte</span><strong id="objectCount">0</strong></div><div><span>Einheit</span><strong>mm / m</strong></div></div>
+      <div class="section-divider"></div>
+      <div class="panel-heading"><span>Maßstab &amp; Richtmaß</span></div>
+      <label class="field-label" for="scaleSelect">Darstellung</label>
+      <div class="scale-row"><span>1 :</span><select id="scaleSelect" class="scale-select"><option value="1">1</option><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option><option value="custom">Benutzerdefiniert</option></select></div>
+      <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Maßstab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
+      <div class="scale-note">Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:20 einem echten Maß von 2.000 mm.</div>
+      <div class="tip-box"><strong>Arbeitsweise</strong><span>Ma&szlig;e werden beim Zeichnen in Millimetern erfasst. Mit <b>Strg + S</b> speicherst du jederzeit den aktuellen Stand.</span></div>
+    </aside>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
