@@ -1,0 +1,173 @@
+{
+  "app": "Werkplan",
+  "version": 3,
+  "unit": "mm",
+  "projectName": "Projekt01",
+  "drawingNumber": "TZ-001",
+  "drawnBy": "-",
+  "projectDate": "2026-08-17",
+  "materials": [
+    {
+      "pos": "1",
+      "qty": "4",
+      "unit": "St",
+      "objectQty": "1",
+      "objectId": "1787000748380-78d09607554898",
+      "name": "Pfosten",
+      "material": "imprägniertes Holz",
+      "dimensions": "1,80 m",
+      "note": "vielleicht einen mehr kaufen"
+    },
+    {
+      "pos": "2",
+      "qty": "1",
+      "unit": "m2",
+      "objectQty": "25",
+      "objectId": "1786999899654-0ee0b53380aaf",
+      "name": "Dach",
+      "material": "Holz und Dachpappe",
+      "dimensions": "2,52 m x 72 mm",
+      "note": "dachpappe benötigt"
+    },
+    {
+      "pos": "3",
+      "qty": "1",
+      "unit": "St",
+      "objectQty": "25",
+      "objectId": "1787002012652-21bfaa2b92a0f",
+      "name": "Rückwand",
+      "material": "",
+      "dimensions": "2,52 m x 1,73 m",
+      "note": "Nut-und Federbretter"
+    }
+  ],
+  "objects": [
+    {
+      "type": "line",
+      "x1": 324,
+      "y1": 2556,
+      "x2": 3564,
+      "y2": 2556,
+      "id": "1786999866144-264a399215eab8",
+      "style": "center",
+      "strokeWidth": 1.5,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 719.9999999999999,
+      "y": 719.9999999999999,
+      "width": 180,
+      "height": 0,
+      "fillMode": "none",
+      "id": "1786999894198-a2385aaa870148",
+      "style": "solid",
+      "strokeWidth": 1.5,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 719.9999999999999,
+      "y": 719.9999999999999,
+      "width": 2519.9999999999995,
+      "height": 72,
+      "fillMode": "crosshatch",
+      "id": "1786999899654-0ee0b53380aaf",
+      "style": "solid",
+      "strokeWidth": 1.5,
+      "stroke": "#263238"
+    },
+    {
+      "type": "dimension",
+      "x1": 720,
+      "y1": 1230.76073654263,
+      "x2": 3239.9999999999995,
+      "y2": 1248.3329479768786,
+      "offset": 22,
+      "id": "1786999920758-142b8ff772a18",
+      "style": "solid",
+      "strokeWidth": 1.5,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 3239.9999999999995,
+      "y": 719.9999999999999,
+      "width": 10,
+      "height": 1799.9999999999995,
+      "fillMode": "solid",
+      "id": "1787000748380-78d09607554898",
+      "style": "solid",
+      "strokeWidth": 1.25,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 723.9999999999999,
+      "y": 724,
+      "width": 7,
+      "height": 1799.9999999999995,
+      "fillMode": "solid",
+      "id": "1787000787346-51930efb551478",
+      "style": "solid",
+      "strokeWidth": 1.25,
+      "stroke": "#263238"
+    },
+    {
+      "type": "dimension",
+      "id": "1787001970958-8f2f89b1f211f",
+      "sourceRectId": "1787000787346-51930efb551478",
+      "autoRectSide": "width",
+      "x1": 723.9999999999999,
+      "y1": 2523.9999999999995,
+      "x2": 730.9999999999999,
+      "y2": 2523.9999999999995,
+      "offset": 22,
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "dimension",
+      "id": "1787001970958-da70a3ea7c43a",
+      "sourceRectId": "1787000787346-51930efb551478",
+      "autoRectSide": "height",
+      "x1": 730.9999999999999,
+      "y1": 2523.9999999999995,
+      "x2": 730.9999999999999,
+      "y2": 724,
+      "offset": 30,
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 719.9999999999999,
+      "y": 719.9999999999998,
+      "width": 2519.9999999999995,
+      "height": 1727.9999999999995,
+      "fillMode": "hatch",
+      "id": "1787002012652-21bfaa2b92a0f",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    }
+  ],
+  "settings": {
+    "grid": true,
+    "snap": true,
+    "zoom": 1,
+    "scale": 3.5999999999999996,
+    "autoScale": true,
+    "dimensionStyle": {
+      "endStyle": "arrow",
+      "textSize": 14,
+      "defaultOffset": 22,
+      "unit": "m",
+      "decimals": 3
+    },
+    "sheetFormat": "A4",
+    "sheetOrientation": "landscape"
+  }
+}

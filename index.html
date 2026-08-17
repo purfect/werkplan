@@ -12,6 +12,8 @@
     <div class="file-actions">
       <button id="newProject" class="text-button">Neu</button>
       <button id="openProject" class="text-button">Laden</button>
+      <button id="undoAction" class="text-button" title="Rückgängig">Undo</button>
+      <button id="redoAction" class="text-button" title="Wiederholen">Redo</button>
       <button id="saveProject" class="primary-button">Speichern</button>
       <button id="exportSvg" class="icon-button" title="Zeichnung als SVG exportieren">↗</button>
       <button id="exportPng" class="icon-button export-button" title="Zeichnung als PNG exportieren">PNG</button>
@@ -23,14 +25,15 @@
 
   <main class="workspace">
     <aside class="sidebar left-panel">
-      <div class="panel-heading"><span>Werkzeuge</span><kbd>1—6</kbd></div>
+      <div class="panel-heading"><span>Werkzeuge</span><kbd>1-7</kbd></div>
       <div class="tool-grid" role="toolbar" aria-label="Werkzeuge">
-        <button class="tool-button active" data-tool="select"><span class="tool-icon">⌖</span><span>Auswahl</span><kbd>1</kbd></button>
-        <button class="tool-button" data-tool="line"><span class="tool-icon">╱</span><span>Linie</span><kbd>2</kbd></button>
-        <button class="tool-button" data-tool="polyline"><span class="tool-icon">⌁</span><span>Polylinie</span><kbd>3</kbd></button>
-        <button class="tool-button" data-tool="rect"><span class="tool-icon">□</span><span>Rechteck</span><kbd>4</kbd></button>
-        <button class="tool-button" data-tool="dimension"><span class="tool-icon">↔</span><span>Bema&szlig;ung</span><kbd>5</kbd></button>
-        <button class="tool-button" data-tool="text"><span class="tool-icon">T</span><span>Text</span><kbd>6</kbd></button>
+        <button class="tool-button active" data-tool="select"><span class="tool-icon">+</span><span>Auswahl</span><kbd>1</kbd></button>
+        <button class="tool-button" data-tool="line"><span class="tool-icon">/</span><span>Linie</span><kbd>2</kbd></button>
+        <button class="tool-button" data-tool="circle"><span class="tool-icon">O</span><span>Kreis</span><kbd>3</kbd></button>
+        <button class="tool-button" data-tool="semicircle"><span class="tool-icon">C</span><span>Halbkreis</span><kbd>4</kbd></button>
+        <button class="tool-button" data-tool="rect"><span class="tool-icon">[]</span><span>Rechteck</span><kbd>5</kbd></button>
+        <button class="tool-button" data-tool="dimension"><span class="tool-icon">&harr;</span><span>Bema&szlig;ung</span><kbd>6</kbd></button>
+        <button class="tool-button" data-tool="text"><span class="tool-icon">T</span><span>Text</span><kbd>7</kbd></button>
       </div>
 
       <div class="section-divider"></div>
@@ -57,6 +60,7 @@
           <input id="targetAngle" type="number" step="1" placeholder="frei">
           <span>&deg;</span>
         </div>
+        <div class="scale-note">Aktuell: <b id="liveAngle">-</b></div>
         <label class="field-label" for="targetRectWidth">Rechteck exakt</label>
         <div class="reference-row">
           <input id="targetRectWidth" type="number" min="1" step="10" placeholder="Breite">
@@ -116,6 +120,9 @@
       <div class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></div>
       <div id="propertyPanel" class="property-panel"><div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div></div>
       <div class="section-divider"></div>
+      <div class="panel-heading"><span>Objektliste</span></div>
+      <div id="objectList" class="object-list"></div>
+      <div class="section-divider"></div>
       <div class="panel-heading"><span>Projekt</span></div>
       <label class="field-label" for="projectName">Name</label><input id="projectName" class="text-input" value="Projekt01">
       <label class="field-label" for="drawingNumber">Zeichnungsnummer</label><input id="drawingNumber" class="text-input" value="TZ-001">
@@ -127,6 +134,8 @@
       <div class="material-list" id="materialList"></div>
       <div class="section-divider"></div>
       <div class="panel-heading"><span>Maßstab &amp; Richtmaß</span></div>
+      <label class="field-label" for="sheetFormat">Blatt</label>
+      <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
       <label class="field-label" for="scaleSelect">Darstellung</label>
       <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
       <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Maßstab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
