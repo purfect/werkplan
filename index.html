@@ -14,6 +14,9 @@
       <button id="openProject" class="text-button">Laden</button>
       <button id="saveProject" class="primary-button">Speichern</button>
       <button id="exportSvg" class="icon-button" title="Zeichnung als SVG exportieren">↗</button>
+      <button id="exportPng" class="icon-button export-button" title="Zeichnung als PNG exportieren">PNG</button>
+      <button id="exportSheetSvg" class="icon-button export-button" title="Zeichnung als SVG exportieren">SVG</button>
+      <button id="exportPdf" class="icon-button export-button" title="Zeichnung als PDF exportieren">PDF</button>
       <input id="fileInput" type="file" accept=".werkplan,.json,application/json" hidden>
     </div>
   </header>
@@ -49,8 +52,45 @@
           <input id="targetLength" type="number" min="1" step="10" placeholder="frei">
           <span>mm</span>
         </div>
+        <label class="field-label" for="targetAngle">Winkel</label>
+        <div class="reference-row">
+          <input id="targetAngle" type="number" step="1" placeholder="frei">
+          <span>&deg;</span>
+        </div>
+        <label class="field-label" for="targetRectWidth">Rechteck exakt</label>
+        <div class="reference-row">
+          <input id="targetRectWidth" type="number" min="1" step="10" placeholder="Breite">
+          <input id="targetRectHeight" type="number" min="1" step="10" placeholder="H&ouml;he">
+          <span>mm</span>
+        </div>
         <div class="scale-note">Leer = frei zeichnen</div>
       </div>
+
+      <div class="section-divider"></div>
+      <div class="panel-heading"><span>Bema&szlig;ungsstil</span></div>
+      <label class="field-label" for="dimensionEndStyle">Enden</label>
+      <select id="dimensionEndStyle" class="text-input">
+        <option value="arrow">Pfeile</option>
+        <option value="slash">Schr&auml;gstriche</option>
+      </select>
+      <label class="field-label" for="dimensionTextSize">Textgr&ouml;&szlig;e</label>
+      <div class="reference-row">
+        <input id="dimensionTextSize" type="number" min="8" max="32" step="1" value="14">
+        <span>px</span>
+      </div>
+      <label class="field-label" for="dimensionDefaultOffset">Abstand</label>
+      <div class="reference-row">
+        <input id="dimensionDefaultOffset" type="number" min="-120" max="120" step="1" value="22">
+        <span>px</span>
+      </div>
+      <label class="field-label" for="dimensionUnit">Einheit</label>
+      <select id="dimensionUnit" class="text-input">
+        <option value="auto">Auto mm/m</option>
+        <option value="mm">mm</option>
+        <option value="m">m</option>
+      </select>
+      <label class="field-label" for="dimensionDecimals">Nachkommastellen</label>
+      <input id="dimensionDecimals" class="text-input" type="number" min="0" max="3" step="1" value="0">
 
       <div class="section-divider"></div>
       <div class="panel-heading"><span>Ansicht</span></div>
@@ -77,12 +117,18 @@
       <div id="propertyPanel" class="property-panel"><div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div></div>
       <div class="section-divider"></div>
       <div class="panel-heading"><span>Projekt</span></div>
-      <label class="field-label" for="projectName">Name</label><input id="projectName" class="text-input" value="Bush&auml;uschen - Entwurf 01">
+      <label class="field-label" for="projectName">Name</label><input id="projectName" class="text-input" value="Projekt01">
+      <label class="field-label" for="drawingNumber">Zeichnungsnummer</label><input id="drawingNumber" class="text-input" value="TZ-001">
+      <label class="field-label" for="drawnBy">Bearbeiter</label><input id="drawnBy" class="text-input" value="">
+      <label class="field-label" for="projectDate">Datum</label><input id="projectDate" class="text-input" type="date">
       <div class="project-stats"><div><span>Objekte</span><strong id="objectCount">0</strong></div><div><span>Einheit</span><strong>mm / m</strong></div></div>
+      <div class="section-divider"></div>
+      <div class="panel-heading"><span>Materialliste</span><button id="addMaterialRow" class="small-button" title="Materialposition hinzufügen">+</button></div>
+      <div class="material-list" id="materialList"></div>
       <div class="section-divider"></div>
       <div class="panel-heading"><span>Maßstab &amp; Richtmaß</span></div>
       <label class="field-label" for="scaleSelect">Darstellung</label>
-      <div class="scale-row"><span>1 :</span><select id="scaleSelect" class="scale-select"><option value="1">1</option><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option><option value="custom">Benutzerdefiniert</option></select></div>
+      <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
       <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Maßstab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
       <div class="scale-note">Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:20 einem echten Maß von 2.000 mm.</div>
       <div class="tip-box"><strong>Arbeitsweise</strong><span>Ma&szlig;e werden beim Zeichnen in Millimetern erfasst. Mit <b>Strg + S</b> speicherst du jederzeit den aktuellen Stand.</span></div>
