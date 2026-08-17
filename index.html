@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
@@ -91,6 +91,7 @@
       <select id="dimensionUnit" class="text-input">
         <option value="auto">Auto mm/m</option>
         <option value="mm">mm</option>
+        <option value="cm">cm</option>
         <option value="m">m</option>
       </select>
       <label class="field-label" for="dimensionDecimals">Nachkommastellen</label>
@@ -117,32 +118,43 @@
     </section>
 
     <aside class="sidebar right-panel">
-      <div class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></div>
-      <div id="propertyPanel" class="property-panel"><div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div></div>
-      <div class="section-divider"></div>
-      <div class="panel-heading"><span>Objektliste</span></div>
-      <div id="objectList" class="object-list"></div>
-      <div class="section-divider"></div>
-      <div class="panel-heading"><span>Projekt</span></div>
-      <label class="field-label" for="projectName">Name</label><input id="projectName" class="text-input" value="Projekt01">
-      <label class="field-label" for="drawingNumber">Zeichnungsnummer</label><input id="drawingNumber" class="text-input" value="TZ-001">
-      <label class="field-label" for="drawnBy">Bearbeiter</label><input id="drawnBy" class="text-input" value="">
-      <label class="field-label" for="projectDate">Datum</label><input id="projectDate" class="text-input" type="date">
-      <div class="project-stats"><div><span>Objekte</span><strong id="objectCount">0</strong></div><div><span>Einheit</span><strong>mm / m</strong></div></div>
-      <div class="section-divider"></div>
-      <div class="panel-heading"><span>Materialliste</span><button id="addMaterialRow" class="small-button" title="Materialposition hinzufügen">+</button></div>
-      <div class="material-list" id="materialList"></div>
-      <div class="section-divider"></div>
-      <div class="panel-heading"><span>Maßstab &amp; Richtmaß</span></div>
-      <label class="field-label" for="sheetFormat">Blatt</label>
-      <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
-      <label class="field-label" for="scaleSelect">Darstellung</label>
-      <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
-      <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Maßstab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
-      <div class="scale-note">Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:20 einem echten Maß von 2.000 mm.</div>
-      <div class="tip-box"><strong>Arbeitsweise</strong><span>Ma&szlig;e werden beim Zeichnen in Millimetern erfasst. Mit <b>Strg + S</b> speicherst du jederzeit den aktuellen Stand.</span></div>
+      <details class="accordion-section" open>
+        <summary class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></summary>
+        <div id="propertyPanel" class="property-panel"><div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div></div>
+      </details>
+
+      <details class="accordion-section">
+        <summary class="panel-heading"><span>Objektliste</span></summary>
+        <div id="objectList" class="object-list"></div>
+      </details>
+
+      <details class="accordion-section" open>
+        <summary class="panel-heading"><span>Projektdetails</span></summary>
+        <label class="field-label" for="projectName">Name</label><input id="projectName" class="text-input" value="Projekt01">
+        <label class="field-label" for="drawingNumber">Zeichnungsnummer</label><input id="drawingNumber" class="text-input" value="TZ-001">
+        <label class="field-label" for="drawnBy">Bearbeiter</label><input id="drawnBy" class="text-input" value="">
+        <label class="field-label" for="projectDate">Datum</label><input id="projectDate" class="text-input" type="date">
+        <div class="project-stats"><div><span>Objekte</span><strong id="objectCount">0</strong></div><div><span>Einheit</span><strong>mm / m</strong></div></div>
+      </details>
+
+      <details class="accordion-section">
+        <summary class="panel-heading"><span>Materialliste</span><button id="addMaterialRow" class="small-button" title="Materialposition hinzuf&uuml;gen">+</button></summary>
+        <div class="material-list" id="materialList"></div>
+      </details>
+
+      <details class="accordion-section">
+        <summary class="panel-heading"><span>Ma&szlig;stab &amp; Richtma&szlig;</span></summary>
+        <label class="field-label" for="sheetFormat">Blatt</label>
+        <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
+        <label class="field-label" for="scaleSelect">Darstellung</label>
+        <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
+        <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Ma&szlig;stab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
+        <div class="scale-note">Ein gezeichnetes Blattma&szlig; von 100 mm entspricht bei 1:20 einem echten Ma&szlig; von 2.000 mm.</div>
+        <div class="tip-box"><strong>Arbeitsweise</strong><span>Ma&szlig;e werden beim Zeichnen in Millimetern erfasst. Mit <b>Strg + S</b> speicherst du jederzeit den aktuellen Stand.</span></div>
+      </details>
     </aside>
   </main>
   <script src="app.js"></script>
 </body>
 </html>
+

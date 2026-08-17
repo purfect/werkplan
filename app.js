@@ -232,15 +232,18 @@ function formatLength(value) { return value >= 1000 ? `${(value / 1000).toFixed(
 function dimensionStyle() {
   return state.dimensionStyle || { endStyle: 'arrow', textSize: 14, defaultOffset: 22, unit: 'auto', decimals: 0 };
 }
-function formatDimensionLength(value) {
+function formatDimensionLength(value, options = {}) {
   const style = dimensionStyle();
-  const decimals = Math.max(0, Math.min(3, Number(style.decimals) || 0));
-  const unit = style.unit === 'auto' ? (value >= 1000 ? 'm' : 'mm') : style.unit;
-  const displayValue = unit === 'm' ? value / 1000 : value;
+  const decimalsSource = options.decimals ?? style.decimals;
+  const decimals = Math.max(0, Math.min(3, Number(decimalsSource) || 0));
+  const unitSetting = options.unit || style.unit || 'auto';
+  const unit = unitSetting === 'auto' ? (value >= 1000 ? 'm' : 'mm') : unitSetting;
+  const displayValue = unit === 'm' ? value / 1000 : unit === 'cm' ? value / 10 : value;
   return `${displayValue.toFixed(decimals).replace('.', ',')} ${unit}`;
 }
 function dimensionLabelText(object, measuredLength) {
-  return object.labelOverride ? String(object.labelOverride) : formatDimensionLength(measuredLength);
+  if (object.labelOverride) return String(object.labelOverride);
+  return `${object.labelPrefix || ''}${formatDimensionLength(measuredLength, { unit: object.dimensionUnit, decimals: object.dimensionDecimals })}`;
 }
 function updateDimensionStyleFromControls() {
   const style = dimensionStyle();
@@ -728,13 +731,16 @@ function startDraggingObject(object, point) {
   setStatus(object.type === 'dimension' ? 'Bemaßungsabstand verschieben' : `${toolNames[object.type] || 'Objekt'} zum Verschieben ausgewählt`);
 }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character])); }
+function unitInput(name, value, unit = 'mm', attrs = '') {
+  return `<span class="unit-input"><input name="${name}" type="number" step="1" value="${value}" ${attrs}><span>${unit}</span></span>`;
+}
 function geometryFields(object) {
-  if (object.type === 'line' || object.type === 'dimension') return `<label>X1<input name="x1" type="number" step="1" value="${object.x1}"></label><label>Y1<input name="y1" type="number" step="1" value="${object.y1}"></label><label>X2<input name="x2" type="number" step="1" value="${object.x2}"></label><label>Y2<input name="y2" type="number" step="1" value="${object.y2}"></label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand<input name="offset" type="number" step="1" value="${Number.isFinite(Number(object.offset)) ? object.offset : dimensionStyle().defaultOffset}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
-  if (object.type === 'circle') return `<label>X Mitte<input name="x" type="number" step="1" value="${object.x}"></label><label>Y Mitte<input name="y" type="number" step="1" value="${object.y}"></label><label class="wide-field">Radius<input name="r" type="number" min="1" step="1" value="${object.r}"></label>`;
-  if (object.type === 'semicircle') return `<label>X Mitte<input name="x" type="number" step="1" value="${object.x}"></label><label>Y Mitte<input name="y" type="number" step="1" value="${object.y}"></label><label>Radius<input name="r" type="number" min="1" step="1" value="${object.r}"></label><label>Winkel<input name="angleDeg" type="number" step="1" value="${Math.round(((object.angle || 0) * 180 / Math.PI + 360) % 360)}"></label>`;
-  if (object.type === 'angleDimension') return `<label>X Mitte<input name="cx" type="number" step="1" value="${object.cx}"></label><label>Y Mitte<input name="cy" type="number" step="1" value="${object.cy}"></label><label>Radius<input name="r" type="number" min="1" step="1" value="${object.r}"></label><label class="wide-field">Winkeltext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>`;
-  if (object.type === 'rect') return `<label>X<input name="x" type="number" step="1" value="${object.x}"></label><label>Y<input name="y" type="number" step="1" value="${object.y}"></label><label>Breite<input name="width" type="number" min="1" step="1" value="${object.width}"></label><label>Höhe<input name="height" type="number" min="1" step="1" value="${object.height}"></label><label class="wide-field">Füllung<select name="fillMode"><option value="none" ${!object.fillMode || object.fillMode === 'none' ? 'selected' : ''}>Keine</option><option value="solid" ${object.fillMode === 'solid' ? 'selected' : ''}>Vollfarbe schwarz</option><option value="hatch" ${object.fillMode === 'hatch' ? 'selected' : ''}>Schraffur</option><option value="crosshatch" ${object.fillMode === 'crosshatch' ? 'selected' : ''}>Kreuzschraffur</option></select></label>`;
-  if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X<input name="x" type="number" step="1" value="${object.x}"></label><label>Y<input name="y" type="number" step="1" value="${object.y}"></label>`;
+  if (object.type === 'line' || object.type === 'dimension') return `<label>X1 ${unitInput('x1', object.x1)}</label><label>Y1 ${unitInput('y1', object.y1)}</label><label>X2 ${unitInput('x2', object.x2)}</label><label>Y2 ${unitInput('y2', object.y2)}</label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand ${unitInput('offset', Number.isFinite(Number(object.offset)) ? object.offset : dimensionStyle().defaultOffset, 'px')}</label><label>Einheit<select name="dimensionUnit"><option value="">Global</option><option value="auto">Auto</option><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label><label>Nachkommastellen<input name="dimensionDecimals" type="number" min="0" max="3" step="1" value="${object.dimensionDecimals ?? ''}" placeholder="${dimensionStyle().decimals}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
+  if (object.type === 'circle') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label class="wide-field">Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label>`;
+  if (object.type === 'semicircle') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label>Winkel ${unitInput('angleDeg', Math.round(((object.angle || 0) * 180 / Math.PI + 360) % 360), '°')}</label>`;
+  if (object.type === 'angleDimension') return `<label>X Mitte ${unitInput('cx', object.cx)}</label><label>Y Mitte ${unitInput('cy', object.cy)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label class="wide-field">Winkeltext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>`;
+  if (object.type === 'rect') return `<label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label><label>Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', object.height, 'mm', 'min="1"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none" ${!object.fillMode || object.fillMode === 'none' ? 'selected' : ''}>Keine</option><option value="solid" ${object.fillMode === 'solid' ? 'selected' : ''}>Vollfarbe schwarz</option><option value="hatch" ${object.fillMode === 'hatch' ? 'selected' : ''}>Schraffur</option><option value="crosshatch" ${object.fillMode === 'crosshatch' ? 'selected' : ''}>Kreuzschraffur</option></select></label>`;
+  if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label>`;
   return '<div class="property-note">Dieses Objekt hat derzeit keine zusätzlichen Eigenschaften.</div>';
 }
 function showProperties(object) {
@@ -742,12 +748,13 @@ function showProperties(object) {
   const measuredLength = object.type === 'line' || object.type === 'dimension' ? distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) : 0;
   const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(measuredLength) : object.type === 'rect' ? `${formatLength(object.width)} x ${formatLength(object.height)}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(object.r)}` : 'Mehrpunkt';
   const rectHasAutoDimensions = object.type === 'rect' && state.objects.some(item => item.type === 'dimension' && item.sourceRectId === object.id);
-  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<div class="reference-box"><strong>Richtmaß festlegen</strong><span>Diese Linie als bekannte Länge für die gesamte Zeichnung verwenden.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(measuredLength || 1800)}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></div>` : object.type === 'rect' ? `<div class="reference-box"><strong>Richtmaß festlegen</strong><span>Breite oder Höhe dieses Rechtecks als bekannte Länge für die gesamte Zeichnung verwenden.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(object.height || 1800)}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></div>` : '';
+  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß festlegen</summary><span>Diese Linie als bekannte Länge für die gesamte Zeichnung verwenden.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(measuredLength || 1800)}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß festlegen</summary><span>Breite oder Höhe dieses Rechtecks als bekannte Länge für die gesamte Zeichnung verwenden.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(object.height || 1800)}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
   const rectControls = '';
   const circleControls = object.type === 'circle' || object.type === 'semicircle' ? `<button id="addRadiusDimension" class="copy-button">Radius bemaßen</button><button id="addDiameterDimension" class="copy-button">Durchmesser bemaßen</button>` : '';
   const angleControls = object.type === 'line' ? `<button id="rememberAngleLine" class="copy-button">Linie 1 merken</button><button id="addAngleDimension" class="copy-button">Winkel zu Linie 1</button>` : '';
   propertyPanel.innerHTML = `<div class="property-form"><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}<button id="applyChanges" class="apply-button">Änderungen übernehmen</button><button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
   document.querySelector('#applyChanges').addEventListener('click', applySelectedChanges);
+  if (object.type === 'dimension' && document.querySelector('[name="dimensionUnit"]')) document.querySelector('[name="dimensionUnit"]').value = object.dimensionUnit || '';
   document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
   document.querySelector('#referenceRectSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(event.target.value === 'width' ? object.width : object.height); });
   document.querySelector('#addRectDimensions')?.addEventListener('click', addRectDimensions);
@@ -790,9 +797,11 @@ function applySelectedChanges() {
   const form = propertyPanel.querySelector('.property-form');
   const values = Object.fromEntries([...form.querySelectorAll('[name]')].map(input => [input.name, input.value]));
   pushHistory();
-  Object.keys(values).forEach(key => { object[key] = ['strokeWidth', 'x', 'y', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'offset', 'r', 'angleDeg'].includes(key) ? Number(values[key]) : values[key]; });
+  Object.keys(values).forEach(key => { object[key] = ['strokeWidth', 'x', 'y', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'offset', 'r', 'angleDeg', 'dimensionDecimals'].includes(key) && values[key] !== '' ? Number(values[key]) : values[key]; });
   if (object.type === 'semicircle' && Number.isFinite(object.angleDeg)) { object.angle = object.angleDeg * Math.PI / 180; delete object.angleDeg; }
   if ((object.type === 'dimension' || object.type === 'angleDimension') && !String(object.labelOverride || '').trim()) delete object.labelOverride;
+  if (object.type === 'dimension' && !object.dimensionUnit) delete object.dimensionUnit;
+  if (object.type === 'dimension' && object.dimensionDecimals === '') delete object.dimensionDecimals;
   if (object.type === 'rect') { object.width = Math.max(1, object.width); object.height = Math.max(1, object.height); }
   if ((object.type === 'circle' || object.type === 'semicircle' || object.type === 'angleDimension') && (!Number.isFinite(object.r) || object.r < 1)) object.r = 1;
   if (object.strokeWidth < 0.25 || !Number.isFinite(object.strokeWidth)) object.strokeWidth = 0.75;
@@ -842,7 +851,7 @@ function addRadiusDimension() {
   pushHistory();
   const angle = object.angle || 0;
   const end = polarPoint(object, object.r, angle);
-  state.objects.push({ type: 'dimension', id: newId(), x1: object.x, y1: object.y, x2: end.x, y2: end.y, offset: dimensionStyle().defaultOffset, labelOverride: `R ${formatDimensionLength(object.r)}`, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
+  state.objects.push({ type: 'dimension', id: newId(), x1: object.x, y1: object.y, x2: end.x, y2: end.y, offset: dimensionStyle().defaultOffset, labelPrefix: 'R ', style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
   render();
   setStatus('Radiusbemaßung erstellt');
 }
@@ -853,7 +862,7 @@ function addDiameterDimension() {
   const angle = object.angle || 0;
   const a = polarPoint(object, object.r, angle);
   const b = polarPoint(object, object.r, angle + Math.PI);
-  state.objects.push({ type: 'dimension', id: newId(), x1: a.x, y1: a.y, x2: b.x, y2: b.y, offset: dimensionStyle().defaultOffset, labelOverride: `Ø ${formatDimensionLength(object.r * 2)}`, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
+  state.objects.push({ type: 'dimension', id: newId(), x1: a.x, y1: a.y, x2: b.x, y2: b.y, offset: dimensionStyle().defaultOffset, labelPrefix: 'Ø ', style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
   render();
   setStatus('Durchmesserbemaßung erstellt');
 }
@@ -1319,7 +1328,7 @@ document.querySelector('#sheetFormat')?.addEventListener('change', event => { st
 document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; render(); setStatus('Blattausrichtung geändert'); });
 document.querySelector('#gridToggle').addEventListener('change', event => { state.grid = event.target.checked; render(); });
 document.querySelector('#snapToggle').addEventListener('change', event => state.snap = event.target.checked);
-document.querySelector('#addMaterialRow')?.addEventListener('click', () => { updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
+document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
 document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; document.querySelector('#projectName').value = state.projectName; renderMaterialList(); selectedId = null; render(); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
