@@ -20,6 +20,8 @@ state.materials = [];
 state.redo = [];
 state.sheetFormat = 'A3';
 state.sheetOrientation = 'landscape';
+state.enabledViews = ['front'];
+state.activeView = 'front';
 let pointerStart = null;
 let selectedId = null;
 let draggingObject = null;
@@ -38,6 +40,8 @@ const sheet = { width: 1200, height: 760, margin: 50, titleHeight: 118 };
 const scaleSteps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
 const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text' };
 const toolOrder = ['select', 'line', 'circle', 'semicircle', 'rect', 'dimension', 'text'];
+const viewNames = { front: 'Frontansicht', side: 'Seitenansicht', top: 'Draufsicht', detail: 'Detail' };
+const viewOrder = ['front', 'side', 'top', 'detail'];
 function updateSheetFromState() {
   const landscape = state.sheetOrientation !== 'portrait';
   if (state.sheetFormat === 'A4') { sheet.width = landscape ? 900 : 640; sheet.height = landscape ? 640 : 900; }
@@ -104,7 +108,7 @@ function addPointCandidate(candidates, rawPoint, snapPointValue, type) {
 }
 function lineSegments() {
   const segments = [];
-  state.objects.filter(object => object.visible !== false).forEach(object => {
+  activeViewObjects().forEach(object => {
     if (object.type === 'line') segments.push({ x1: object.x1, y1: object.y1, x2: object.x2, y2: object.y2 });
     if (object.type === 'rect') {
       segments.push({ x1: object.x, y1: object.y, x2: object.x + object.width, y2: object.y });
@@ -269,7 +273,7 @@ function updateProjectMetaFromForm() {
   state.projectDate = document.querySelector('#projectDate')?.value || new Date().toISOString().slice(0, 10);
 }
 function objectListLabel(object, index = state.objects.indexOf(object)) {
-  return `${index + 1}. ${toolNames[object.type] || object.type} - ${objectSummary(object)}`;
+  return `${index + 1}. ${toolNames[object.type] || object.type} - ${objectSummary(object)} - ${viewNames[objectView(object)]}`;
 }
 function linkedObjectText(item) {
   const object = state.objects.find(entry => entry.id === item.objectId);
@@ -395,7 +399,19 @@ function renderMaterialList() {
   });
 }
 function objectBounds(object) {
-  if (object.type === 'line' || object.type === 'dimension') return { minX: Math.min(object.x1, object.x2), minY: Math.min(object.y1, object.y2), maxX: Math.max(object.x1, object.x2), maxY: Math.max(object.y1, object.y2) };
+  if (object.type === 'line') return { minX: Math.min(object.x1, object.x2), minY: Math.min(object.y1, object.y2), maxX: Math.max(object.x1, object.x2), maxY: Math.max(object.y1, object.y2) };
+  if (object.type === 'dimension') {
+    const dx = object.x2 - object.x1; const dy = object.y2 - object.y1; const length = Math.hypot(dx, dy) || 1;
+    const offset = (Number.isFinite(Number(object.offset)) ? Number(object.offset) : dimensionStyle().defaultOffset) * state.scale;
+    const normal = { x: -dy / length, y: dx / length };
+    const points = [
+      { x: object.x1, y: object.y1 },
+      { x: object.x2, y: object.y2 },
+      { x: object.x1 + normal.x * offset, y: object.y1 + normal.y * offset },
+      { x: object.x2 + normal.x * offset, y: object.y2 + normal.y * offset }
+    ];
+    return { minX: Math.min(...points.map(point => point.x)) - 250, minY: Math.min(...points.map(point => point.y)) - 250, maxX: Math.max(...points.map(point => point.x)) + 250, maxY: Math.max(...points.map(point => point.y)) + 250 };
+  }
   if (object.type === 'rect') return { minX: object.x, minY: object.y, maxX: object.x + object.width, maxY: object.y + object.height };
   if (object.type === 'circle' || object.type === 'semicircle') return { minX: object.x - object.r, minY: object.y - object.r, maxX: object.x + object.r, maxY: object.y + object.r };
   if (object.type === 'angleDimension') return { minX: object.cx - object.r, minY: object.cy - object.r, maxX: object.cx + object.r, maxY: object.cy + object.r };
@@ -417,15 +433,68 @@ function drawingBounds(padding = 0) {
     maxY: Math.max(...boxes.map(box => box.maxY)) + padding
   };
 }
+function boundsForObjects(objects, padding = 0) {
+  const boxes = objects.map(objectBounds).filter(Boolean);
+  if (!boxes.length) return null;
+  return {
+    minX: Math.min(...boxes.map(box => box.minX)) - padding,
+    minY: Math.min(...boxes.map(box => box.minY)) - padding,
+    maxX: Math.max(...boxes.map(box => box.maxX)) + padding,
+    maxY: Math.max(...boxes.map(box => box.maxY)) + padding
+  };
+}
+function objectView(object) {
+  return viewNames[object.view] ? object.view : 'front';
+}
+function enabledViews() {
+  const views = Array.isArray(state.enabledViews) ? state.enabledViews.filter(view => viewNames[view]) : [];
+  return views.length ? views : ['front'];
+}
+function activeViewObjects() {
+  return state.objects.filter(object => object.visible !== false && objectView(object) === state.activeView);
+}
+function syncViewControls() {
+  const enabled = enabledViews();
+  document.querySelectorAll('.view-toggle').forEach(input => { input.checked = enabled.includes(input.value); });
+  const active = document.querySelector('#activeView');
+  if (active) active.value = viewNames[state.activeView] ? state.activeView : enabled[0];
+}
+function updateViewsFromControls() {
+  const selected = [...document.querySelectorAll('.view-toggle:checked')].map(input => input.value).filter(view => viewNames[view]);
+  state.enabledViews = selected.length ? selected : ['front'];
+  if (!state.enabledViews.includes(state.activeView)) state.activeView = state.enabledViews[0];
+  const active = document.querySelector('#activeView')?.value;
+  if (active && state.enabledViews.includes(active)) state.activeView = active;
+  syncViewControls();
+}
+function exportViewGroups() {
+  const visible = state.objects.filter(object => object.visible !== false);
+  const grouped = new Map();
+  visible.forEach(object => {
+    const view = objectView(object);
+    if (!grouped.has(view)) grouped.set(view, []);
+    grouped.get(view).push(object);
+  });
+  return viewOrder.filter(view => enabledViews().includes(view)).map(view => ({ view, objects: grouped.get(view) || [] })).filter(group => enabledViews().length > 1 || group.objects.length);
+}
+function materialTableHeight() {
+  const rows = Math.min(state.materials.length, 6);
+  return state.materials.length ? 22 * (rows + 2) : 0;
+}
+function exportDrawingAreaHeight() {
+  const titleTop = sheet.height - sheet.margin - sheet.titleHeight;
+  const reservedMaterial = materialTableHeight() ? materialTableHeight() + 32 : 0;
+  return Math.max(120, titleTop - sheet.margin - 16 - reservedMaterial);
+}
+function calculateRequiredExportScale(bounds, usableWidth = sheet.width - sheet.margin * 2, usableHeight = exportDrawingAreaHeight()) {
+  return Math.max((bounds.maxX - bounds.minX) / usableWidth, (bounds.maxY - bounds.minY) / usableHeight, 1);
+}
 function calculateAutoScale() {
   updateSheetFromState();
+  updateMaterialsFromForm();
   const bounds = drawingBounds(500);
   if (!bounds) return state.scale || 20;
-  bounds.minX = Math.min(0, bounds.minX);
-  bounds.minY = Math.min(0, bounds.minY);
-  const usableWidth = sheet.width - sheet.margin * 2;
-  const usableHeight = sheet.height - sheet.margin * 2 - sheet.titleHeight;
-  const required = Math.max((bounds.maxX - bounds.minX) / usableWidth, (bounds.maxY - bounds.minY) / usableHeight, 1);
+  const required = calculateRequiredExportScale(bounds);
   return scaleSteps.find(step => step >= required) || Math.ceil(required / 1000) * 1000;
 }
 function updateAutoScale() {
@@ -533,9 +602,9 @@ function renderObject(object, layer = drawingLayer) {
 }
 function render() {
   addFillPatterns(canvas);
-  drawingLayer.replaceChildren(); state.objects.filter(object => object.visible !== false).forEach(object => renderObject(object));
+  drawingLayer.replaceChildren(); activeViewObjects().forEach(object => renderObject(object));
   renderMaterialMarkers();
-  emptyState.classList.toggle('hidden', state.objects.length > 0);
+  emptyState.classList.toggle('hidden', activeViewObjects().length > 0);
   document.querySelector('#objectCount').textContent = state.objects.length;
   document.querySelector('#gridLayer').style.display = state.grid ? '' : 'none';
   document.querySelector('#zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
@@ -547,7 +616,7 @@ function render() {
   updateHistoryControls();
 }
 function renderMaterialMarkers() {
-  state.objects.filter(object => object.visible !== false).forEach(object => {
+  activeViewObjects().forEach(object => {
     const labels = materialMarkersForObject(object);
     const point = labels.length ? materialMarkerPoint(object) : null;
     if (!point) return;
@@ -572,8 +641,18 @@ function updateHistoryControls() {
 function pushHistory() { state.history.push(snapshotObjects()); state.redo = []; if (state.history.length > 30) state.history.shift(); }
 function undo() { if (!state.history.length) { setStatus('Nichts zum Rückgängig machen'); return; } state.redo.push(snapshotObjects()); restoreObjects(state.history.pop()); setStatus('Rückgängig'); }
 function redo() { if (!state.redo.length) { setStatus('Nichts zum Wiederholen'); return; } state.history.push(snapshotObjects()); restoreObjects(state.redo.pop()); setStatus('Wiederholt'); }
-function addObject(object) { pushHistory(); state.objects.push({ ...object, id: newId(), style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }); selectedId = null; render(); setStatus('Objekt hinzugefügt'); }
-function selectObject(id) { selectedId = id; render(); const object = state.objects.find(item => item.id === id); if (object) setStatus(`${toolNames[object.type] || 'Objekt'} ausgewählt`); }
+function addObject(object) { pushHistory(); state.objects.push({ ...object, id: newId(), view: object.view || state.activeView, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }); selectedId = null; render(); setStatus('Objekt hinzugefügt'); }
+function selectObject(id) {
+  selectedId = id;
+  const object = state.objects.find(item => item.id === id);
+  if (object) {
+    state.activeView = objectView(object);
+    if (!enabledViews().includes(state.activeView)) state.enabledViews = [...enabledViews(), state.activeView];
+    syncViewControls();
+  }
+  render();
+  if (object) setStatus(`${toolNames[object.type] || 'Objekt'} ausgewählt`);
+}
 function setStatus(message) { statusText.textContent = message; }
 function objectSummary(object) {
   if (object.type === 'line') return formatLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }));
@@ -631,7 +710,7 @@ function addHandle(x, y, kind) {
   drawingLayer.append(handle);
 }
 function renderHandles() {
-  const object = state.objects.find(item => item.id === selectedId && item.visible !== false);
+  const object = state.objects.find(item => item.id === selectedId && item.visible !== false && objectView(item) === state.activeView);
   if (!object || state.tool !== 'select') return;
   if (object.type === 'line' || object.type === 'dimension') {
     addHandle(object.x1, object.y1, 'p1');
@@ -752,8 +831,9 @@ function showProperties(object) {
   const rectControls = '';
   const circleControls = object.type === 'circle' || object.type === 'semicircle' ? `<button id="addRadiusDimension" class="copy-button">Radius bemaßen</button><button id="addDiameterDimension" class="copy-button">Durchmesser bemaßen</button>` : '';
   const angleControls = object.type === 'line' ? `<button id="rememberAngleLine" class="copy-button">Linie 1 merken</button><button id="addAngleDimension" class="copy-button">Winkel zu Linie 1</button>` : '';
-  propertyPanel.innerHTML = `<div class="property-form"><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}<button id="applyChanges" class="apply-button">Änderungen übernehmen</button><button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
+  propertyPanel.innerHTML = `<div class="property-form"><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label><label class="wide-field">Ansicht<select name="view"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}<button id="applyChanges" class="apply-button">Änderungen übernehmen</button><button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
   document.querySelector('#applyChanges').addEventListener('click', applySelectedChanges);
+  document.querySelector('[name="view"]').value = objectView(object);
   if (object.type === 'dimension' && document.querySelector('[name="dimensionUnit"]')) document.querySelector('[name="dimensionUnit"]').value = object.dimensionUnit || '';
   document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
   document.querySelector('#referenceRectSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(event.target.value === 'width' ? object.width : object.height); });
@@ -805,6 +885,9 @@ function applySelectedChanges() {
   if (object.type === 'rect') { object.width = Math.max(1, object.width); object.height = Math.max(1, object.height); }
   if ((object.type === 'circle' || object.type === 'semicircle' || object.type === 'angleDimension') && (!Number.isFinite(object.r) || object.r < 1)) object.r = 1;
   if (object.strokeWidth < 0.25 || !Number.isFinite(object.strokeWidth)) object.strokeWidth = 0.75;
+  state.activeView = objectView(object);
+  if (!enabledViews().includes(state.activeView)) state.enabledViews = [...enabledViews(), state.activeView];
+  syncViewControls();
   render();
   setStatus('Änderungen übernommen');
 }
@@ -838,9 +921,10 @@ function addRectDimensions() {
     return;
   }
   const offset = dimensionStyle().defaultOffset;
+  const view = objectView(object);
   state.objects.push(
-    { type: 'dimension', id: newId(), sourceRectId: object.id, autoRectSide: 'width', x1: object.x, y1: object.y + object.height, x2: object.x + object.width, y2: object.y + object.height, offset, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor },
-    { type: 'dimension', id: newId(), sourceRectId: object.id, autoRectSide: 'height', x1: object.x + object.width, y1: object.y + object.height, x2: object.x + object.width, y2: object.y, offset, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }
+    { type: 'dimension', id: newId(), sourceRectId: object.id, autoRectSide: 'width', view, x1: object.x, y1: object.y + object.height, x2: object.x + object.width, y2: object.y + object.height, offset, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor },
+    { type: 'dimension', id: newId(), sourceRectId: object.id, autoRectSide: 'height', view, x1: object.x + object.width, y1: object.y + object.height, x2: object.x + object.width, y2: object.y, offset, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }
   );
   render();
   setStatus('Rechteck automatisch bemaßt');
@@ -851,7 +935,7 @@ function addRadiusDimension() {
   pushHistory();
   const angle = object.angle || 0;
   const end = polarPoint(object, object.r, angle);
-  state.objects.push({ type: 'dimension', id: newId(), x1: object.x, y1: object.y, x2: end.x, y2: end.y, offset: dimensionStyle().defaultOffset, labelPrefix: 'R ', style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
+  state.objects.push({ type: 'dimension', id: newId(), view: objectView(object), x1: object.x, y1: object.y, x2: end.x, y2: end.y, offset: dimensionStyle().defaultOffset, labelPrefix: 'R ', style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
   render();
   setStatus('Radiusbemaßung erstellt');
 }
@@ -862,7 +946,7 @@ function addDiameterDimension() {
   const angle = object.angle || 0;
   const a = polarPoint(object, object.r, angle);
   const b = polarPoint(object, object.r, angle + Math.PI);
-  state.objects.push({ type: 'dimension', id: newId(), x1: a.x, y1: a.y, x2: b.x, y2: b.y, offset: dimensionStyle().defaultOffset, labelPrefix: 'Ø ', style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
+  state.objects.push({ type: 'dimension', id: newId(), view: objectView(object), x1: a.x, y1: a.y, x2: b.x, y2: b.y, offset: dimensionStyle().defaultOffset, labelPrefix: 'Ø ', style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
   render();
   setStatus('Durchmesserbemaßung erstellt');
 }
@@ -882,7 +966,7 @@ function addAngleDimension() {
   const angleA = Math.atan2(farA.y - intersection.y, farA.x - intersection.x);
   const angleB = Math.atan2(farB.y - intersection.y, farB.x - intersection.x);
   pushHistory();
-  state.objects.push({ type: 'angleDimension', id: newId(), cx: intersection.x, cy: intersection.y, r: 500, startAngle: angleA, endAngle: angleB, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
+  state.objects.push({ type: 'angleDimension', id: newId(), view: objectView(lineB), cx: intersection.x, cy: intersection.y, r: 500, startAngle: angleA, endAngle: angleB, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor });
   render();
   setStatus('Winkelbemaßung erstellt');
 }
@@ -890,9 +974,8 @@ function pasteClipboard() { if (!clipboard) { setStatus('Nichts zum Einfügen');
 function handlePointerDown(event) {
   const point = eventPoint(event, state.tool === 'dimension');
   if (state.tool === 'select') {
-    const hitObject = state.objects.find(object => {
+    const hitObject = activeViewObjects().find(object => {
       const hitThreshold = 400;
-      if (object.visible === false) return false;
       if (object.type === 'line' || object.type === 'dimension') {
         return distanceToLine(point, object.x1, object.y1, object.x2, object.y2) <= hitThreshold;
       }
@@ -1016,20 +1099,20 @@ function exportSvg() { const copy = canvas.cloneNode(true); copy.querySelector('
 function fileBaseName() { updateProjectMetaFromForm(); return (state.projectName || 'werkplan').replace(/[^a-z0-9_-]+/gi, '_'); }
 function downloadBlob(blob, filename) { const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
 function exportPoint(value, min, scale, offset = sheet.margin) { return offset + (value - min) / scale; }
-function renderExportObject(object, layer, bounds, exportScale) {
+function renderExportObject(object, layer, bounds, exportScale, offsetX = sheet.margin, offsetY = sheet.margin) {
   const attrs = styleAttrs(object);
   attrs['stroke-width'] = Math.max(0.6, Number(attrs['stroke-width']) || 0.75);
   let element;
-  if (object.type === 'line') element = makeSvg('line', { ...attrs, x1: exportPoint(object.x1, bounds.minX, exportScale), y1: exportPoint(object.y1, bounds.minY, exportScale), x2: exportPoint(object.x2, bounds.minX, exportScale), y2: exportPoint(object.y2, bounds.minY, exportScale) });
-  if (object.type === 'rect') element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: exportPoint(object.x, bounds.minX, exportScale), y: exportPoint(object.y, bounds.minY, exportScale), width: object.width / exportScale, height: object.height / exportScale });
-  if (object.type === 'circle') element = makeSvg('circle', { ...attrs, cx: exportPoint(object.x, bounds.minX, exportScale), cy: exportPoint(object.y, bounds.minY, exportScale), r: object.r / exportScale });
-  if (object.type === 'semicircle') element = makeSvg('path', { ...attrs, d: semicirclePath(object, exportScale, sheet.margin - bounds.minX / exportScale, sheet.margin - bounds.minY / exportScale) });
-  if (object.type === 'polyline') element = makeSvg('polyline', { ...attrs, points: object.points.map(point => `${exportPoint(point.x, bounds.minX, exportScale)},${exportPoint(point.y, bounds.minY, exportScale)}`).join(' ') });
+  if (object.type === 'line') element = makeSvg('line', { ...attrs, x1: exportPoint(object.x1, bounds.minX, exportScale, offsetX), y1: exportPoint(object.y1, bounds.minY, exportScale, offsetY), x2: exportPoint(object.x2, bounds.minX, exportScale, offsetX), y2: exportPoint(object.y2, bounds.minY, exportScale, offsetY) });
+  if (object.type === 'rect') element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: exportPoint(object.x, bounds.minX, exportScale, offsetX), y: exportPoint(object.y, bounds.minY, exportScale, offsetY), width: object.width / exportScale, height: object.height / exportScale });
+  if (object.type === 'circle') element = makeSvg('circle', { ...attrs, cx: exportPoint(object.x, bounds.minX, exportScale, offsetX), cy: exportPoint(object.y, bounds.minY, exportScale, offsetY), r: object.r / exportScale });
+  if (object.type === 'semicircle') element = makeSvg('path', { ...attrs, d: semicirclePath(object, exportScale, offsetX - bounds.minX / exportScale, offsetY - bounds.minY / exportScale) });
+  if (object.type === 'polyline') element = makeSvg('polyline', { ...attrs, points: object.points.map(point => `${exportPoint(point.x, bounds.minX, exportScale, offsetX)},${exportPoint(point.y, bounds.minY, exportScale, offsetY)}`).join(' ') });
   if (object.type === 'angleDimension') {
     const style = dimensionStyle();
-    const offsetX = sheet.margin - bounds.minX / exportScale;
-    const offsetY = sheet.margin - bounds.minY / exportScale;
-    const center = { x: object.cx / exportScale + offsetX, y: object.cy / exportScale + offsetY };
+    const angleOffsetX = offsetX - bounds.minX / exportScale;
+    const angleOffsetY = offsetY - bounds.minY / exportScale;
+    const center = { x: object.cx / exportScale + angleOffsetX, y: object.cy / exportScale + angleOffsetY };
     const radius = Math.max(1, object.r || 500) / exportScale;
     const delta = shortestAngleDelta(object.startAngle || 0, object.endAngle || 0);
     const start = polarPoint(center, radius, object.startAngle || 0);
@@ -1039,7 +1122,7 @@ function renderExportObject(object, layer, bounds, exportScale) {
     element.append(
       makeSvg('line', { ...attrs, x1: center.x, y1: center.y, x2: start.x, y2: start.y }),
       makeSvg('line', { ...attrs, x1: center.x, y1: center.y, x2: end.x, y2: end.y }),
-      makeSvg('path', { ...attrs, d: angleArcPath(object, exportScale, offsetX, offsetY) })
+      makeSvg('path', { ...attrs, d: angleArcPath(object, exportScale, angleOffsetX, angleOffsetY) })
     );
     const label = makeSvg('text', { x: mid.x, y: mid.y, 'text-anchor': 'middle', class: 'dimension-label', 'font-size': style.textSize });
     label.textContent = angleDimensionLabel(object);
@@ -1049,8 +1132,8 @@ function renderExportObject(object, layer, bounds, exportScale) {
     const dx = object.x2 - object.x1; const dy = object.y2 - object.y1; const length = Math.max(1, Math.round(Math.hypot(dx, dy)));
     const style = dimensionStyle();
     const normal = { x: -dy / length, y: dx / length }; const offset = Number.isFinite(Number(object.offset)) ? Number(object.offset) : style.defaultOffset;
-    const x1 = exportPoint(object.x1, bounds.minX, exportScale); const y1 = exportPoint(object.y1, bounds.minY, exportScale);
-    const x2 = exportPoint(object.x2, bounds.minX, exportScale); const y2 = exportPoint(object.y2, bounds.minY, exportScale);
+    const x1 = exportPoint(object.x1, bounds.minX, exportScale, offsetX); const y1 = exportPoint(object.y1, bounds.minY, exportScale, offsetY);
+    const x2 = exportPoint(object.x2, bounds.minX, exportScale, offsetX); const y2 = exportPoint(object.y2, bounds.minY, exportScale, offsetY);
     const ax = x1 + normal.x * offset; const ay = y1 + normal.y * offset; const bx = x2 + normal.x * offset; const by = y2 + normal.y * offset;
     element = makeSvg('g', {});
     element.append(makeSvg('line', { ...attrs, x1, y1, x2: ax, y2: ay }), makeSvg('line', { ...attrs, x1: x2, y1: y2, x2: bx, y2: by }), makeSvg('line', { ...attrs, x1: ax, y1: ay, x2: bx, y2: by }));
@@ -1058,16 +1141,16 @@ function renderExportObject(object, layer, bounds, exportScale) {
     const label = makeSvg('text', { x: (ax + bx) / 2, y: (ay + by) / 2 - 7, 'text-anchor': 'middle', class: 'dimension-label', 'font-size': style.textSize });
     label.textContent = dimensionLabelText(object, length); element.append(label);
   }
-  if (object.type === 'text') { element = makeSvg('text', { ...attrs, x: exportPoint(object.x, bounds.minX, exportScale), y: exportPoint(object.y, bounds.minY, exportScale), stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16 }); element.textContent = object.value; }
+  if (object.type === 'text') { element = makeSvg('text', { ...attrs, x: exportPoint(object.x, bounds.minX, exportScale, offsetX), y: exportPoint(object.y, bounds.minY, exportScale, offsetY), stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16 }); element.textContent = object.value; }
   if (element) layer.append(element);
 }
-function renderExportMaterialMarkers(layer, bounds, exportScale) {
-  state.objects.filter(object => object.visible !== false).forEach(object => {
+function renderExportMaterialMarkers(layer, bounds, exportScale, objects = state.objects.filter(object => object.visible !== false), offsetX = sheet.margin, offsetY = sheet.margin) {
+  objects.forEach(object => {
     const labels = materialMarkersForObject(object);
     const point = labels.length ? materialMarkerPoint(object) : null;
     if (!point) return;
-    const x = exportPoint(point.x, bounds.minX, exportScale);
-    const y = exportPoint(point.y, bounds.minY, exportScale);
+    const x = exportPoint(point.x, bounds.minX, exportScale, offsetX);
+    const y = exportPoint(point.y, bounds.minY, exportScale, offsetY);
     const group = makeSvg('g', {});
     group.append(makeSvg('circle', { cx: x, cy: y, r: 13, fill: '#fffdf8', stroke: '#263238', 'stroke-width': 1.1 }));
     const text = makeSvg('text', { x, y: y + 4, 'text-anchor': 'middle', class: 'sheet-text', 'font-weight': 700, fill: '#263238' });
@@ -1075,6 +1158,38 @@ function renderExportMaterialMarkers(layer, bounds, exportScale) {
     group.append(text);
     layer.append(group);
   });
+}
+function renderExportViews(root) {
+  const groups = exportViewGroups();
+  if (!groups.length) return state.autoScale ? calculateAutoScale() : state.scale;
+  const drawing = makeSvg('g', {});
+  const gap = groups.length > 1 ? 28 : 0;
+  const labelHeight = groups.length > 1 ? 24 : 0;
+  const totalWidth = sheet.width - sheet.margin * 2;
+  const areaHeight = exportDrawingAreaHeight();
+  const slotWidth = (totalWidth - gap * (groups.length - 1)) / groups.length;
+  const viewLayouts = groups.map((group, index) => {
+    const bounds = boundsForObjects(group.objects, 500);
+    const x = sheet.margin + index * (slotWidth + gap);
+    const y = sheet.margin + labelHeight;
+    const usableHeight = Math.max(120, areaHeight - labelHeight);
+    const requiredScale = bounds ? calculateRequiredExportScale(bounds, slotWidth, usableHeight) : 1;
+    return { ...group, bounds, x, y, usableHeight, requiredScale };
+  });
+  const filledLayouts = viewLayouts.filter(layout => layout.bounds);
+  const requiredScale = Math.max(...filledLayouts.map(layout => layout.requiredScale), 1);
+  const commonScale = state.autoScale ? (scaleSteps.find(step => step >= requiredScale) || Math.ceil(requiredScale / 1000) * 1000) : Math.max(state.scale, scaleSteps.find(step => step >= requiredScale) || Math.ceil(requiredScale / 1000) * 1000);
+  viewLayouts.forEach(group => {
+    if (groups.length > 1) {
+      addTableText(drawing, group.x, sheet.margin + 15, viewNames[group.view], { 'font-size': 13, 'font-weight': 700, fill: '#263238' });
+      drawing.append(makeSvg('rect', { x: group.x, y: group.y, width: slotWidth, height: group.usableHeight, fill: 'none', stroke: '#d6dfdd', 'stroke-width': 0.7, 'stroke-dasharray': '5 5' }));
+    }
+    if (!group.bounds) return;
+    group.objects.forEach(object => renderExportObject(object, drawing, group.bounds, commonScale, group.x, group.y));
+    renderExportMaterialMarkers(drawing, group.bounds, commonScale, group.objects, group.x, group.y);
+  });
+  root.append(drawing);
+  return commonScale || state.scale;
 }
 function addTitleCell(root, x, y, width, height, label, value) {
   root.append(makeSvg('rect', { x, y, width, height, fill: 'none', stroke: '#263238', 'stroke-width': 1 }));
@@ -1102,7 +1217,6 @@ function addMaterialTable(root) {
   updateMaterialsFromForm();
   if (!state.materials.length) return;
   const x = sheet.margin;
-  const y = sheet.height - sheet.margin - sheet.titleHeight - 170;
   const baseWidth = 640;
   const width = Math.min(baseWidth, sheet.width - sheet.margin * 2);
   const rowHeight = 22;
@@ -1113,6 +1227,8 @@ function addMaterialTable(root) {
   ].map(([label, colWidth]) => [label, colWidth * factor]);
   const rows = state.materials.slice(0, 6);
   const height = rowHeight * (rows.length + 2);
+  const titleTop = sheet.height - sheet.margin - sheet.titleHeight;
+  const y = titleTop - height - 16;
   root.append(makeSvg('rect', { x, y, width, height, fill: '#fffdf8', stroke: '#263238', 'stroke-width': 1.1 }));
   addTableText(root, x + 8, y + 15, 'Materialliste / Stückliste', { 'font-weight': 700, fill: '#263238' });
   let colX = x;
@@ -1136,8 +1252,7 @@ function addMaterialTable(root) {
 function buildSheetSvg() {
   updateProjectMetaFromForm();
   updateSheetFromState();
-  const bounds = drawingBounds(500) || { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-  const exportScale = state.autoScale ? calculateAutoScale() : state.scale;
+  updateMaterialsFromForm();
   const mm = sheetSizeMm();
   const root = makeSvg('svg', { xmlns: svgNS, width: `${mm.w}mm`, height: `${mm.h}mm`, viewBox: `0 0 ${sheet.width} ${sheet.height}` });
   addFillPatterns(root);
@@ -1146,11 +1261,8 @@ function buildSheetSvg() {
   root.append(style);
   root.append(makeSvg('rect', { width: sheet.width, height: sheet.height, fill: '#fffdf8' }));
   root.append(makeSvg('rect', { x: 28, y: 28, width: sheet.width - 56, height: sheet.height - 56, fill: 'none', stroke: '#263238', 'stroke-width': 1.4 }));
-  root.append(makeSvg('rect', { x: sheet.margin, y: sheet.margin, width: sheet.width - sheet.margin * 2, height: sheet.height - sheet.margin * 2 - sheet.titleHeight, fill: 'none', stroke: '#c8d2d0', 'stroke-width': 0.8, 'stroke-dasharray': '6 6' }));
-  const drawing = makeSvg('g', {});
-  state.objects.filter(object => object.visible !== false).forEach(object => renderExportObject(object, drawing, bounds, exportScale));
-  renderExportMaterialMarkers(drawing, bounds, exportScale);
-  root.append(drawing);
+  root.append(makeSvg('rect', { x: sheet.margin, y: sheet.margin, width: sheet.width - sheet.margin * 2, height: exportDrawingAreaHeight(), fill: 'none', stroke: '#c8d2d0', 'stroke-width': 0.8, 'stroke-dasharray': '6 6' }));
+  const exportScale = renderExportViews(root);
   addMaterialTable(root);
   const titleX = sheet.width - sheet.margin - 540; const titleY = sheet.height - sheet.margin - sheet.titleHeight;
   root.append(makeSvg('rect', { x: titleX, y: titleY, width: 540, height: sheet.titleHeight, fill: '#fffdf8', stroke: '#263238', 'stroke-width': 1.2 }));
@@ -1161,8 +1273,6 @@ function buildSheetSvg() {
   addTitleCell(root, titleX + 180, titleY + 59, 150, 59, 'Bearbeiter', state.drawnBy);
   addTitleCell(root, titleX + 330, titleY + 59, 120, 59, 'Datum', state.projectDate);
   addTitleCell(root, titleX + 450, titleY + 59, 90, 59, 'Format', `${state.sheetFormat} ${state.sheetOrientation === 'portrait' ? 'hoch' : 'quer'}`);
-  const note = makeSvg('text', { x: sheet.margin, y: sheet.height - sheet.margin - 12, class: 'sheet-text' }); note.textContent = 'Technische Zeichnung - automatisch skaliert nach verwendeten Massen';
-  root.append(note);
   return new XMLSerializer().serializeToString(root);
 }
 function exportSheetSvg() {
@@ -1268,7 +1378,7 @@ saveProject = function() {
     projectDate: state.projectDate,
     materials: state.materials,
     objects: state.objects,
-    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation }
+    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView }
   };
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${fileBaseName()}.werkplan`);
   setStatus('Projekt gespeichert');
@@ -1295,8 +1405,11 @@ loadProject = function(file) {
       state.autoScale = data.settings?.autoScale ?? true;
       state.sheetFormat = data.settings?.sheetFormat || 'A3';
       state.sheetOrientation = data.settings?.sheetOrientation || 'landscape';
+      state.enabledViews = Array.isArray(data.settings?.enabledViews) ? data.settings.enabledViews.filter(view => viewNames[view]) : ['front'];
+      state.activeView = viewNames[data.settings?.activeView] ? data.settings.activeView : state.enabledViews[0];
       document.querySelector('#sheetFormat').value = state.sheetFormat;
       document.querySelector('#sheetOrientation').value = state.sheetOrientation;
+      syncViewControls();
       state.dimensionStyle = data.settings?.dimensionStyle || state.dimensionStyle;
       syncDimensionStyleControls();
       state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 20;
@@ -1326,10 +1439,12 @@ document.querySelector('#scaleSelect').addEventListener('change', event => { if 
 document.querySelector('#customScale').addEventListener('change', event => setScale(event.target.value));
 document.querySelector('#sheetFormat')?.addEventListener('change', event => { state.sheetFormat = event.target.value; render(); setStatus('Blattformat geändert'); });
 document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; render(); setStatus('Blattausrichtung geändert'); });
+document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); render(); setStatus('Exportansichten geändert'); }));
+document.querySelector('#activeView')?.addEventListener('change', event => { state.activeView = event.target.value; if (!enabledViews().includes(state.activeView)) state.enabledViews = [...enabledViews(), state.activeView]; syncViewControls(); render(); setStatus(`${viewNames[state.activeView]} aktiv`); });
 document.querySelector('#gridToggle').addEventListener('change', event => { state.grid = event.target.checked; render(); });
 document.querySelector('#snapToggle').addEventListener('change', event => state.snap = event.target.checked);
 document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
-document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; document.querySelector('#projectName').value = state.projectName; renderMaterialList(); selectedId = null; render(); setStatus('Neue Zeichnung'); });
+document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; document.querySelector('#projectName').value = state.projectName; syncViewControls(); renderMaterialList(); selectedId = null; render(); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
 document.querySelector('#undoAction')?.addEventListener('click', undo);
@@ -1347,6 +1462,7 @@ document.addEventListener('keydown', event => { if (event.ctrlKey && event.key.t
 document.querySelector('#projectDate').value = state.projectDate;
 document.querySelector('#sheetFormat').value = state.sheetFormat;
 document.querySelector('#sheetOrientation').value = state.sheetOrientation;
+syncViewControls();
 syncDimensionStyleControls();
 renderMaterialList();
 syncScaleControls();

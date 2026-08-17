@@ -146,6 +146,13 @@
         <summary class="panel-heading"><span>Ma&szlig;stab &amp; Richtma&szlig;</span></summary>
         <label class="field-label" for="sheetFormat">Blatt</label>
         <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
+        <label class="field-label" for="activeView">Ansichten im Export</label>
+        <label class="check-row"><input class="view-toggle" type="checkbox" value="front" checked> Frontansicht</label>
+        <label class="check-row"><input class="view-toggle" type="checkbox" value="side"> Seitenansicht</label>
+        <label class="check-row"><input class="view-toggle" type="checkbox" value="top"> Draufsicht</label>
+        <label class="check-row"><input class="view-toggle" type="checkbox" value="detail"> Detail</label>
+        <label class="field-label" for="activeView">Aktive Ansicht</label>
+        <select id="activeView" class="text-input"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select>
         <label class="field-label" for="scaleSelect">Darstellung</label>
         <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
         <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Ma&szlig;stab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
