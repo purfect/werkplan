@@ -778,7 +778,7 @@ function renderObject(object, layer = drawingLayer) {
   element.dataset.id = object.id;
   if (selectedIds.has(object.id) || object.id === selectedId) element.classList.add('selected-shape');
   element.addEventListener('pointerdown', event => { if (state.tool === 'select' && layer === drawingLayer && !isObjectLocked(object)) { event.preventDefault(); event.stopPropagation(); canvas.setPointerCapture?.(event.pointerId); startDraggingObject(object, eventPoint(event), event.shiftKey); } });
-  element.addEventListener('contextmenu', event => { if (layer === drawingLayer && state.tool === 'select') { event.preventDefault(); selectObject(object.id); showContextMenu(event.clientX, event.clientY); } });
+  element.addEventListener('contextmenu', event => { if (layer === drawingLayer && state.tool === 'select') { event.preventDefault(); if (!selectedIds.has(object.id)) selectObject(object.id); showContextMenu(event.clientX, event.clientY); } });
   layer.append(element);
   return element;
 }
@@ -1300,7 +1300,7 @@ function applySelectedChanges() {
   render();
   setStatus('Änderungen übernommen');
 }
-function showContextMenu(x, y) { const menu = document.querySelector('#contextMenu'); menu.hidden = false; menu.style.left = `${Math.min(x, innerWidth - 190)}px`; menu.style.top = `${Math.min(y, innerHeight - 280)}px`; }
+function showContextMenu(x, y) { const menu = document.querySelector('#contextMenu'); menu.hidden = false; menu.style.left = `${Math.min(x, innerWidth - 190)}px`; menu.style.top = `${Math.max(6, Math.min(y, innerHeight - menu.offsetHeight - 6))}px`; }
 function hideContextMenu() { document.querySelector('#contextMenu').hidden = true; }
 function dimensionSelectedFromMenu() {
   const object = state.objects.find(item => item.id === selectedId); if (!object) return;
@@ -1318,7 +1318,42 @@ function syncLinkedDimensions(object) {
   });
 }
 function deleteSelected() { if (!selectedIds.size && !selectedId) return; pushHistory(); const ids = selectedIds.size ? new Set(selectedIds) : new Set([selectedId]); state.objects = state.objects.filter(object => !ids.has(object.id)); selectedId = null; selectedIds.clear(); propertyPanel.innerHTML = '<div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div>'; document.querySelector('#selectionCount').textContent = 'Nichts ausgewählt'; render(); setStatus(`${ids.size} Objekt(e) gelöscht`); }
-function copySelected() { const objects = selectedObjects(); if (!objects.length) return; clipboard = JSON.parse(JSON.stringify(objects)); setStatus(`${objects.length} Objekt(e) kopiert – Strg+V zum Einfügen`); }
+function copySelected() {
+  const objects = selectedObjects(); if (!objects.length) return;
+  const selectedSourceIds = new Set(objects.map(object => object.id));
+  const linkedDimensions = state.objects.filter(object => object.type === 'dimension' && !selectedSourceIds.has(object.id) && (selectedSourceIds.has(object.sourceRectId) || selectedSourceIds.has(object.sourceObjectId)));
+  const sources = [...objects, ...linkedDimensions];
+  clipboard = JSON.parse(JSON.stringify(sources));
+  setStatus(`${sources.length} Objekt(e) kopiert – Strg+V zum Einfügen`);
+}
+function pasteClipboardToView(targetView) {
+  if (!clipboard || !viewNames[targetView]) { setStatus('Keine gültige Kopie oder Zielansicht'); return; }
+  const sources = Array.isArray(clipboard) ? clipboard : [clipboard];
+  const idMap = new Map(sources.map(source => [source.id, newId()]));
+  const groupMap = new Map();
+  pushHistory();
+  const copies = sources.map(source => {
+    const copy = JSON.parse(JSON.stringify(source));
+    copy.id = idMap.get(source.id);
+    copy.view = targetView;
+    if (copy.groupId) {
+      if (!groupMap.has(copy.groupId)) groupMap.set(copy.groupId, `gruppe-${newId()}`);
+      copy.groupId = groupMap.get(copy.groupId);
+    }
+    if (copy.sourceRectId) copy.sourceRectId = idMap.get(copy.sourceRectId) || '';
+    if (copy.sourceObjectId) copy.sourceObjectId = idMap.get(copy.sourceObjectId) || '';
+    if (!copy.sourceRectId) { delete copy.sourceRectId; delete copy.autoRectSide; }
+    if (!copy.sourceObjectId) delete copy.sourceObjectId;
+    return copy;
+  });
+  state.objects.push(...copies);
+  state.activeView = targetView;
+  if (!enabledViews().includes(targetView)) state.enabledViews = [...enabledViews(), targetView];
+  selectedIds = new Set(copies.map(copy => copy.id));
+  selectedId = copies.at(-1)?.id || null;
+  loadActiveViewSettings(); syncViewControls(); render();
+  setStatus(`${copies.length} Objekt(e) in ${viewNames[targetView]} eingefügt`);
+}
 function addSelectedToMaterialList() {
   const object = state.objects.find(item => item.id === selectedId);
   if (!object) return;
@@ -1952,7 +1987,7 @@ document.querySelectorAll('.view-button').forEach(button => button.addEventListe
 ['#objectSearch', '#objectTypeFilter', '#objectViewFilter', '#objectLayerFilter'].forEach(selector => document.querySelector(selector)?.addEventListener('input', renderObjectList));
 document.querySelector('#objectTypeFilter').innerHTML += Object.entries(toolNames).filter(([type]) => !['select','smartTrim','smartExtend'].includes(type)).map(([type, name]) => `<option value="${type}">${name}</option>`).join('');
 document.querySelector('#objectLayerFilter').innerHTML += state.layers.map(layer => `<option value="${layer.id}">${layer.name}</option>`).join('');
-document.querySelector('#contextMenu').addEventListener('click', event => { const action = event.target.dataset.action; if (!action) return; if (action === 'copy') copySelected(); if (action === 'rotate') { const field = propertyPanel.querySelector('[name="rotateAngle"]'); if (field) field.value = 90; rotateSelectedExact(); } if (action === 'mirrorH') mirrorSelected('horizontal'); if (action === 'mirrorV') mirrorSelected('vertical'); if (action === 'dimension') dimensionSelectedFromMenu(); if (action === 'material') addSelectedToMaterialList(); if (action === 'delete') deleteSelected(); hideContextMenu(); });
+document.querySelector('#contextMenu').addEventListener('click', event => { const action = event.target.dataset.action; if (!action) return; if (action === 'copy') copySelected(); if (action === 'copyToView') { copySelected(); pasteClipboardToView(event.target.dataset.view); } if (action === 'rotate') { const field = propertyPanel.querySelector('[name="rotateAngle"]'); if (field) field.value = 90; rotateSelectedExact(); } if (action === 'mirrorH') mirrorSelected('horizontal'); if (action === 'mirrorV') mirrorSelected('vertical'); if (action === 'dimension') dimensionSelectedFromMenu(); if (action === 'material') addSelectedToMaterialList(); if (action === 'delete') deleteSelected(); hideContextMenu(); });
 document.addEventListener('pointerdown', event => { if (!event.target.closest('#contextMenu')) hideContextMenu(); });
 document.querySelector('#gridToggle').addEventListener('change', event => { state.grid = event.target.checked; setDirty(); render(); });
 document.querySelector('#snapToggle').addEventListener('change', event => { state.snap = event.target.checked; setDirty(); });

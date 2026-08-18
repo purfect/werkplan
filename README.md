@@ -123,6 +123,6 @@ Beim Export werden nicht druckbare Ebenen ausgelassen. Die ersten sechs Material
 
 In der Objektliste kann nach Name oder Typ sowie nach Ansicht und Ebene gefiltert werden. Objekte lassen sich dort sichtbar oder unsichtbar schalten, sperren, auswählen und anhand ihrer Material- oder Bemaßungsverknüpfungen prüfen. Objektname, Ebene und Sperre sind direkt in den Eigenschaften editierbar.
 
-Ein Rechtsklick auf ein Objekt öffnet Befehle für Kopieren, 90-Grad-Drehung, Spiegelung, Schnellbemaßung, Materialzuordnung und Löschen.
+Ein Rechtsklick auf ein Objekt öffnet Befehle für Kopieren, 90-Grad-Drehung, Spiegelung, Schnellbemaßung, Materialzuordnung und Löschen. Unter **Kopie einfügen in** kann die aktuelle Einzel- oder Mehrfachauswahl direkt in die Frontansicht, Seitenansicht, Draufsicht oder Detailansicht kopiert werden. Position, Geometrie, Ebene und objektbezogenes Richtmaß bleiben erhalten; automatisch verknüpfte Bemaßungen werden mitkopiert. Die Zielansicht wird danach automatisch geöffnet.
 
 Die verwendeten Schriften liegen als WOFF2-Dateien im Ordner `fonts`. Werkplan benötigt deshalb auch für die Typografie keine Internetverbindung. Die zugehörigen OFL-Lizenztexte befinden sich im selben Ordner.
