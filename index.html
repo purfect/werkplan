@@ -123,7 +123,7 @@
           <button type="button" class="view-button" data-view="top">Drauf</button>
           <button type="button" class="view-button" data-view="detail">Detail</button>
         </div>
-        <span class="canvas-meta"><strong id="activeViewLabel">Frontansicht</strong> &middot; A3 quer &middot; <span id="scaleMeta">1:20</span></span>
+        <span class="canvas-meta"><strong id="activeViewLabel">Frontansicht</strong> &middot; <span id="sheetMeta">A3 quer</span> &middot; <span id="scaleMeta">1:20</span></span>
       </div>
       <div id="canvasWrap" class="canvas-wrap">
         <svg id="drawingCanvas" viewBox="0 0 1200 760" aria-label="Technische Zeichenfl&auml;che">
@@ -142,6 +142,10 @@
         <label class="field-label" for="activeLayer">Aktive Ebene</label>
         <select id="activeLayer" class="text-input"></select>
         <div id="layerList" class="layer-list"></div>
+      </details>
+      <details class="accordion-section">
+        <summary class="panel-heading"><span>Projektwarnungen</span><span id="warningCount" class="warning-count">0</span></summary>
+        <div id="warningList" class="warning-list"></div>
       </details>
       <details class="accordion-section" open>
         <summary class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></summary>
@@ -193,8 +197,20 @@
       </details>
     </aside>
   </main>
+  <div id="commandPalette" class="command-palette-backdrop" hidden>
+    <div class="command-palette" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
+      <div id="commandPaletteTitle" class="command-palette-title">Befehl ausführen</div>
+      <input id="commandSearch" type="search" autocomplete="off" placeholder="Werkzeug oder Aktion suchen">
+      <div id="commandResults" class="command-results" role="listbox"></div>
+    </div>
+  </div>
   <div id="contextMenu" class="context-menu" hidden>
     <button type="button" data-action="copy">Kopieren</button>
+    <div class="context-menu-label">Kopie einfügen in</div>
+    <button type="button" data-action="copyToView" data-view="front">Frontansicht</button>
+    <button type="button" data-action="copyToView" data-view="side">Seitenansicht</button>
+    <button type="button" data-action="copyToView" data-view="top">Draufsicht</button>
+    <button type="button" data-action="copyToView" data-view="detail">Detail</button>
     <button type="button" data-action="rotate">90° drehen</button>
     <button type="button" data-action="mirrorH">Horizontal spiegeln</button>
     <button type="button" data-action="mirrorV">Vertikal spiegeln</button>
