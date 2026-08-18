@@ -448,9 +448,16 @@ function objectListLabel(object, index = state.objects.indexOf(object)) {
   return `${index + 1}. ${object.name || toolNames[object.type] || object.type} - ${objectSummary(object)} - ${viewNames[objectView(object)]}`;
 }
 function linkedObjectText(item) {
-  const object = state.objects.find(entry => entry.id === item.objectId);
-  if (!object) return item.objectId ? 'Objekt fehlt' : '';
-  return objectListLabel(object);
+  const ids = materialObjectIds(item);
+  if (!ids.length) return '';
+  return ids.map(id => {
+    const object = state.objects.find(entry => entry.id === id);
+    return object ? objectListLabel(object) : 'Objekt fehlt';
+  }).join(', ');
+}
+function materialObjectIds(item) {
+  if (Array.isArray(item.objectIds)) return item.objectIds.filter(Boolean);
+  return item.objectId ? [item.objectId] : [];
 }
 function materialDimensionsFromObject(object) {
   if (!object) return '';
@@ -468,24 +475,25 @@ function parseMaterialNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 function calculatedMaterialQuantity(item) {
-  const object = state.objects.find(entry => entry.id === item.objectId);
-  if (!object) return '';
-  const count = 1;
-  let value = null;
-  if (item.unit === 'St') value = count;
-  if (item.unit === 'm') {
-    if (object.type === 'line') value = calibratedLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }), object) / 1000 * count;
-    if (object.type === 'rect') value = calibratedLength((object.width + object.height) * 2, object) / 1000 * count;
-    if (object.type === 'circle') value = calibratedLength(2 * Math.PI * object.r, object) / 1000 * count;
-    if (object.type === 'semicircle') value = calibratedLength(Math.PI * object.r + object.r * 2, object) / 1000 * count;
-  }
-  if (item.unit === 'm2') {
-    const factor = viewCalibrationFactor(objectView(object));
-    if (object.type === 'rect') value = object.width * object.height * factor * factor / 1000000 * count;
-    if (object.type === 'circle') value = Math.PI * object.r * object.r * factor * factor / 1000000 * count;
-    if (object.type === 'semicircle') value = Math.PI * object.r * object.r * factor * factor / 2000000 * count;
-  }
-  return value === null ? '' : trimNumber(value);
+  const objects = materialObjectIds(item).map(id => state.objects.find(entry => entry.id === id)).filter(Boolean);
+  if (!objects.length) return '';
+  if (item.unit === 'St') return trimNumber(objects.length * Math.max(1, Number(item.objectQty) || 1));
+  const values = objects.map(object => {
+    if (item.unit === 'm') {
+      if (object.type === 'line') return calibratedLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }), object) / 1000;
+      if (object.type === 'rect') return calibratedLength((object.width + object.height) * 2, object) / 1000;
+      if (object.type === 'circle') return calibratedLength(2 * Math.PI * object.r, object) / 1000;
+      if (object.type === 'semicircle') return calibratedLength(Math.PI * object.r + object.r * 2, object) / 1000;
+    }
+    if (item.unit === 'm2') {
+      const factor = viewCalibrationFactor(objectView(object));
+      if (object.type === 'rect') return object.width * object.height * factor * factor / 1000000;
+      if (object.type === 'circle') return Math.PI * object.r * object.r * factor * factor / 1000000;
+      if (object.type === 'semicircle') return Math.PI * object.r * object.r * factor * factor / 2000000;
+    }
+    return null;
+  }).filter(value => value !== null);
+  return values.length ? trimNumber(values.reduce((sum, value) => sum + value, 0) * Math.max(1, Number(item.objectQty) || 1)) : '';
 }
 function materialMarkerPoint(object) {
   if (object.type === 'line' || object.type === 'dimension') return { x: (object.x1 + object.x2) / 2, y: (object.y1 + object.y2) / 2 };
@@ -496,10 +504,10 @@ function materialMarkerPoint(object) {
   return null;
 }
 function materialMarkersForObject(object) {
-  return state.materials.filter(item => item.objectId === object.id).map(item => `Pos. ${item.pos || state.materials.indexOf(item) + 1}`);
+  return state.materials.filter(item => materialObjectIds(item).includes(object.id)).map(item => `Pos. ${item.pos || state.materials.indexOf(item) + 1}`);
 }
 function defaultMaterialRow() {
-  return { pos: String(state.materials.length + 1), qty: '1', unit: 'St', objectQty: '1', objectId: '', name: '', material: '', dimensions: '', note: '' };
+  return { pos: String(state.materials.length + 1), qty: '1', unit: 'St', objectQty: '1', objectIds: [], name: '', material: '', dimensions: '', note: '' };
 }
 function materialRowFromObject(object) {
   return {
@@ -507,7 +515,7 @@ function materialRowFromObject(object) {
     qty: '1',
     unit: 'St',
     objectQty: '1',
-    objectId: object.id,
+    objectIds: [object.id],
     name: object.materialName || toolNames[object.type] || 'Teil',
     material: '',
     dimensions: materialDimensionsFromObject(object),
@@ -522,12 +530,12 @@ function updateMaterialsFromForm() {
     qty: row.querySelector('[name="qty"]').value.trim(),
     unit: row.querySelector('[name="unit"]').value,
     objectQty: row.querySelector('[name="objectQty"]')?.value.trim() || '1',
-    objectId: row.querySelector('[name="objectId"]')?.value || '',
+    objectIds: [...(row.querySelector('[name="objectIds"]')?.selectedOptions || [])].map(option => option.value).filter(Boolean),
     name: row.querySelector('[name="name"]').value.trim(),
     material: row.querySelector('[name="material"]').value.trim(),
     dimensions: row.querySelector('[name="dimensions"]').value.trim(),
     note: row.querySelector('[name="note"]').value.trim()
-  })).filter(item => item.name || item.material || item.dimensions || item.note || item.objectId);
+  })).filter(item => item.name || item.material || item.dimensions || item.note || item.objectIds.length);
 }
 function renderMaterialList() {
   const list = document.querySelector('#materialList');
@@ -544,14 +552,13 @@ function renderMaterialList() {
     const row = document.createElement('div');
     row.className = 'material-row';
     row.dataset.index = index;
-    const objectExists = state.objects.some(object => object.id === item.objectId);
-    const missingOption = item.objectId && !objectExists ? `<option value="${escapeHtml(item.objectId)}">Objekt fehlt: ${escapeHtml(item.objectId)}</option>` : '';
-    const objectOptions = ['<option value="">Kein Objekt</option>', missingOption, ...state.objects.map((object, objectIndex) => `<option value="${escapeHtml(object.id)}">${escapeHtml(objectListLabel(object, objectIndex))}</option>`)].join('');
-    row.innerHTML = `<label>Pos.<input name="pos" value="${escapeHtml(item.pos || String(index + 1))}"></label><label>Menge<input name="qty" value="${escapeHtml(item.qty || '1')}"></label><label>Einheit<select name="unit"><option value="St">St</option><option value="m">m</option><option value="m2">m²</option><option value="m3">m³</option><option value="kg">kg</option><option value="l">l</option></select></label><label>St./Objekt<input name="objectQty" type="number" min="1" step="1" value="${escapeHtml(item.objectQty || '1')}"></label><label class="wide-field">Verknüpftes Objekt<select name="objectId">${objectOptions}</select></label><label class="wide-field">Bezeichnung<input name="name" value="${escapeHtml(item.name || '')}"></label><label class="wide-field">Werkstoff / Material<input name="material" value="${escapeHtml(item.material || '')}"></label><label class="wide-field">Abmessung<input name="dimensions" value="${escapeHtml(item.dimensions || '')}"></label><label class="wide-field">Bemerkung<input name="note" value="${escapeHtml(item.note || '')}"></label><button class="calc-material" type="button">Optional: Menge berechnen</button><button class="remove-material" type="button">Position löschen</button>`;
+    const selectedObjectIds = materialObjectIds(item);
+    const objectOptions = state.objects.map((object, objectIndex) => `<option value="${escapeHtml(object.id)}">${escapeHtml(objectListLabel(object, objectIndex))}</option>`).join('');
+    row.innerHTML = `<label>Pos.<input name="pos" value="${escapeHtml(item.pos || String(index + 1))}"></label><label>Menge<input name="qty" value="${escapeHtml(item.qty || '1')}"></label><label>Einheit<select name="unit"><option value="St">St</option><option value="m">m</option><option value="m2">m²</option><option value="m3">m³</option><option value="kg">kg</option><option value="l">l</option></select></label><label>St./Objekt<input name="objectQty" type="number" min="1" step="1" value="${escapeHtml(item.objectQty || '1')}"></label><label class="wide-field">Verknüpfte Objekte<select name="objectIds" multiple size="3">${objectOptions}</select></label><label class="wide-field">Bezeichnung<input name="name" value="${escapeHtml(item.name || '')}"></label><label class="wide-field">Werkstoff / Material<input name="material" value="${escapeHtml(item.material || '')}"></label><label class="wide-field">Abmessung<input name="dimensions" value="${escapeHtml(item.dimensions || '')}"></label><label class="wide-field">Bemerkung<input name="note" value="${escapeHtml(item.note || '')}"></label><button class="calc-material" type="button">Optional: Menge berechnen</button><button class="remove-material" type="button">Position löschen</button>`;
     row.querySelector('[name="unit"]').value = item.unit || 'St';
-    row.querySelector('[name="objectId"]').value = item.objectId || '';
-    row.querySelector('[name="objectId"]').addEventListener('change', event => {
-      const object = state.objects.find(entry => entry.id === event.target.value);
+    row.querySelectorAll('[name="objectIds"] option').forEach(option => { option.selected = selectedObjectIds.includes(option.value); });
+    row.querySelector('[name="objectIds"]').addEventListener('change', event => {
+      const object = state.objects.find(entry => entry.id === event.target.selectedOptions[0]?.value);
       if (!object) return;
       if (!row.querySelector('[name="dimensions"]').value.trim()) row.querySelector('[name="dimensions"]').value = materialDimensionsFromObject(object);
       if (!row.querySelector('[name="name"]').value.trim()) row.querySelector('[name="name"]').value = toolNames[object.type] || 'Teil';
@@ -675,7 +682,7 @@ function projectWarnings() {
     if (layer.locked) warnings.push({ type: 'layer', objectId: object.id, message: `${object.name || toolNames[object.type] || 'Objekt'} liegt auf der gesperrten Ebene „${layer.name}“.` });
     if (layer.printable === false) warnings.push({ type: 'print', objectId: object.id, message: `${object.name || toolNames[object.type] || 'Objekt'} liegt auf der nicht druckbaren Ebene „${layer.name}“.` });
   });
-  state.materials.forEach((item, index) => { if (item.objectId && !objectIds.has(item.objectId)) warnings.push({ type: 'material', message: `Materialposition ${item.pos || index + 1} verweist auf ein gelöschtes Objekt.` }); });
+  state.materials.forEach((item, index) => { materialObjectIds(item).filter(id => !objectIds.has(id)).forEach(() => warnings.push({ type: 'material', message: `Materialposition ${item.pos || index + 1} verweist auf ein gelöschtes Objekt.` })); });
   enabledViews().forEach(view => {
     const setting = ensureViewSetting(view); const hasManualPosition = Number.isFinite(setting.exportX) || Number.isFinite(setting.exportY);
     if (!hasManualPosition) return;
@@ -1074,7 +1081,7 @@ function renderObjectList() {
     const searchable = `${object.name || ''} ${toolNames[object.type] || object.type}`.toLowerCase();
     if ((search && !searchable.includes(search)) || (typeFilter && object.type !== typeFilter) || (viewFilter && objectView(object) !== viewFilter) || (layerFilter && objectLayer(object) !== layerFilter)) return;
     const row = document.createElement('div');
-    const linked = state.materials.filter(item => item.objectId === object.id);
+    const linked = state.materials.filter(item => materialObjectIds(item).includes(object.id));
     const dimensions = state.objects.filter(item => item.type === 'dimension' && item.sourceRectId === object.id).length;
     const materialSuffix = `${dimensions ? ` | ${dimensions} Maß(e)` : ''}${linked.length ? ` | Material: ${linked.map(item => `${item.name || 'Teil'} x${item.objectQty || 1}`).join(', ')}` : ''}`;
     row.className = `object-row${object.id === selectedId ? ' active' : ''}`;
@@ -1279,9 +1286,10 @@ function showMultiSelectionProperties() {
   const objects = selectedObjects();
   document.querySelector('#selectionCount').textContent = `${objects.length} ausgewählt`;
   const grouped = objects.every(object => object.groupId && object.groupId === objects[0].groupId);
-  propertyPanel.innerHTML = `<div class="property-note">${objects.length} Objekte ausgewählt.</div><div class="operation-grid multi-actions"><button id="groupSelection" type="button">Gruppieren</button><button id="ungroupSelection" type="button">Gruppierung aufheben</button><button id="copyObject" type="button">Kopieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 90, '°')}</label><button id="rotateExact" type="button">Gemeinsam drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button><button id="deleteSelected" type="button">Auswahl löschen</button></div>${grouped ? `<div class="property-note">Gemeinsame Gruppe</div>` : ''}`;
+  propertyPanel.innerHTML = `<div class="property-note">${objects.length} Objekte ausgewählt.</div><div class="operation-grid multi-actions"><button id="groupSelection" type="button">Gruppieren</button><button id="ungroupSelection" type="button">Gruppierung aufheben</button><button id="addObjectMaterial" type="button">Als Materialposition zuordnen</button><button id="copyObject" type="button">Kopieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 90, '°')}</label><button id="rotateExact" type="button">Gemeinsam drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button><button id="deleteSelected" type="button">Auswahl löschen</button></div>${grouped ? `<div class="property-note">Gemeinsame Gruppe</div>` : ''}`;
   document.querySelector('#groupSelection').addEventListener('click', groupSelection);
   document.querySelector('#ungroupSelection').addEventListener('click', ungroupSelection);
+  document.querySelector('#addObjectMaterial').addEventListener('click', addSelectedToMaterialList);
   document.querySelector('#copyObject').addEventListener('click', copySelected);
   document.querySelector('#rotateExact').addEventListener('click', rotateSelectedExact);
   document.querySelector('#mirrorHorizontal').addEventListener('click', () => mirrorSelected('horizontal'));
@@ -1521,21 +1529,26 @@ function pasteClipboardToView(targetView) {
   setStatus(`${copies.length} Objekt(e) größengetreu in ${viewNames[targetView]} eingefügt`);
 }
 function addSelectedToMaterialList() {
-  const object = state.objects.find(item => item.id === selectedId);
-  if (!object) return;
+  const objects = selectedObjects();
+  const object = state.objects.find(item => item.id === selectedId) || objects[0];
+  if (!object || !objects.length) return;
   updateMaterialsFromForm();
-  const existing = state.materials.find(item => item.objectId === object.id);
+  const selectedObjectIds = objects.map(item => item.id);
+  const existing = state.materials.find(item => selectedObjectIds.some(id => materialObjectIds(item).includes(id)));
   if (existing) {
-    existing.objectQty = String(Math.max(1, Number(existing.objectQty) || 1) + 1);
+    existing.objectIds = [...new Set([...materialObjectIds(existing), ...selectedObjectIds])];
+    delete existing.objectId;
     if (!existing.dimensions) existing.dimensions = materialDimensionsFromObject(object);
     if (!existing.name) existing.name = toolNames[object.type] || 'Teil';
   } else {
-    state.materials.push(materialRowFromObject(object));
+    const material = materialRowFromObject(object);
+    material.objectIds = selectedObjectIds;
+    state.materials.push(material);
   }
   setDirty();
   renderMaterialList();
   render();
-  setStatus('Objekt mit Materialliste verknüpft');
+  setStatus(`${objects.length} Objekt(e) mit Materialposition verknüpft`);
 }
 function addRectDimensions() {
   const object = state.objects.find(item => item.id === selectedId);
@@ -1847,7 +1860,7 @@ function renderExportMaterialMarkers(layer, bounds, exportScale, objects = state
 }
 function calculateCommonExportRequirement(groups = exportViewGroups()) {
   if (!groups.length) return 1;
-  const gap = groups.length > 1 ? 28 : 0; const labelHeight = groups.length > 1 ? 24 : 0;
+  const gap = groups.length > 1 ? 28 : 0; const labelHeight = 24;
   const slotWidth = (sheet.width - sheet.margin * 2 - gap * (groups.length - 1)) / groups.length;
   const usableHeight = Math.max(120, exportDrawingAreaHeight() - labelHeight);
   return Math.max(1, ...groups.map(group => {
@@ -1864,7 +1877,7 @@ function renderExportViews(root) {
   if (!groups.length) return state.autoScale ? calculateAutoScale() : state.scale;
   const drawing = makeSvg('g', {});
   const gap = groups.length > 1 ? 28 : 0;
-  const labelHeight = groups.length > 1 ? 24 : 0;
+  const labelHeight = 24;
   const totalWidth = sheet.width - sheet.margin * 2;
   const areaHeight = exportDrawingAreaHeight();
   const slotWidth = (totalWidth - gap * (groups.length - 1)) / groups.length;
@@ -1885,8 +1898,8 @@ function renderExportViews(root) {
   const minimumCommonScale = Math.max(1, ...filledLayouts.map(layout => layout.requiredScale));
   const commonScale = state.exportScaleMode === 'manual' ? Math.max(1, Number(state.exportScale) || 1) : Math.max(1, Math.ceil(minimumCommonScale));
   viewLayouts.forEach((group, groupIndex) => {
+    addTableText(drawing, group.x, sheet.margin + 15, viewNames[group.view], { 'font-size': 13, 'font-weight': 700, fill: '#263238' });
     if (groups.length > 1) {
-      addTableText(drawing, group.x, sheet.margin + 15, viewNames[group.view], { 'font-size': 13, 'font-weight': 700, fill: '#263238' });
       drawing.append(makeSvg('rect', { x: group.x, y: group.y, width: slotWidth, height: group.usableHeight, fill: 'none', stroke: '#d6dfdd', 'stroke-width': 0.7, 'stroke-dasharray': '5 5' }));
     }
     if (!group.bounds) return;
@@ -1924,11 +1937,13 @@ function addTableText(root, x, y, value, attrs = {}) {
 function materialExportValues(item, index) {
   const objectInfo = linkedObjectText(item);
   const baseQty = parseMaterialNumber(item.qty, NaN);
-  const objectQty = item.objectId ? Math.max(1, parseMaterialNumber(item.objectQty, 1)) : 1;
-  const qty = Number.isFinite(baseQty) ? trimNumber(baseQty * objectQty) : item.qty || '';
+  const linkedCount = materialObjectIds(item).length;
+  const objectQty = parseMaterialNumber(item.objectQty, NaN);
+  const exportQty = Number.isFinite(baseQty) && (baseQty !== 1 || !Number.isFinite(objectQty) || objectQty === 1) ? baseQty : objectQty;
+  const qty = Number.isFinite(exportQty) ? trimNumber(exportQty) : item.qty || '';
   const unit = item.unit === 'm2' ? 'm²' : item.unit === 'm3' ? 'm³' : item.unit;
-  const objectQtyNote = item.objectId && item.objectQty && Number(item.objectQty) > 1 ? `${item.objectQty} St./Objekt` : '';
-  const linkedNote = objectInfo ? `Obj.: ${objectInfo}` : '';
+  const objectQtyNote = linkedCount > 1 ? `${linkedCount} Objekte` : item.objectQty && Number(item.objectQty) > 1 ? `${item.objectQty} St./Objekt` : '';
+  const linkedNote = objectInfo ? `Verknüpfungen: ${objectInfo}` : '';
   const note = [item.note || '', objectQtyNote, linkedNote].filter(Boolean).join(' | ');
   return [item.pos || index + 1, qty, unit, item.name, item.material, item.dimensions, note];
 }
