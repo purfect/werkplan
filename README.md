@@ -2,6 +2,8 @@
 
 Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vollständig offline im Browser und benötigt weder Installation noch Server.
 
+![Werkplan mit technischer Zeichnung](Screenshot%202026-08-18%20111535.png)
+
 ## Start unter Windows 11
 
 `Start-Zeichenprogramm.bat` doppelklicken oder `index.html` im Browser öffnen.
@@ -128,6 +130,12 @@ Für ein Objekt in einer anderen Arbeitsansicht zuerst oberhalb der Zeichenfläc
 - **Leertaste und linke Maustaste ziehen**: Zeichenfläche verschieben
 - **Alles**: Alle Objekte der aktiven Ansicht einpassen
 - **Auswahl**: Das ausgewählte Objekt einpassen
+
+## Helles und dunkles Design
+
+Das Sonnen-/Mondsymbol in der Kopfzeile schaltet zwischen hellem und dunklem Design um. Beim ersten Start übernimmt Werkplan die Systemeinstellung des Browsers; eine manuelle Auswahl wird lokal gespeichert und beim nächsten Öffnen wiederhergestellt.
+
+Im dunklen Design werden Kopfzeile, Seitenleisten, Werkzeugflächen, Formulare, Kontextmenü und Befehlssuche abgedunkelt. Die Zeichenfläche erhält einen neutralen grauen Hintergrund mit angepasstem Raster und dunklen Maßtexten. SVG-, PNG- und PDF-Exporte bleiben unabhängig vom Oberflächendesign hell.
 
 ## Befehlssuche
 
