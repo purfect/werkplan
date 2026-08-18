@@ -180,8 +180,8 @@
         <label class="field-label" for="sheetFormat">Blatt</label>
         <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
         <label class="field-label" for="exportScaleSelect">Exportmaßstab</label>
-        <select id="exportScaleSelect" class="text-input"><option value="auto">Automatisch einpassen</option><option value="1">1:1</option><option value="2">1:2</option><option value="5">1:5</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select>
-        <div id="customExportScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customExportScale">Eigener Exportmaßstab 1 :</label><input id="customExportScale" class="text-input" type="number" min="1" step="0.1" value="10"></div>
+        <select id="exportScaleSelect" class="text-input"><option value="auto">Automatisch einpassen</option><option value="0.1">10:1</option><option value="0.2">5:1</option><option value="0.5">2:1</option><option value="1">1:1</option><option value="2">1:2</option><option value="5">1:5</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select>
+        <div id="customExportScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customExportScale">Eigener Exportmaßstab-Nenner</label><input id="customExportScale" class="text-input" type="text" inputmode="decimal" value="10"></div>
         <div id="exportScaleStatus" class="scale-note">Wird beim Export automatisch passend berechnet.</div>
         <label class="field-label">Ansichten im Export</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="front" checked> Frontansicht</label>

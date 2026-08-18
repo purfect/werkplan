@@ -174,8 +174,8 @@ Sind mehrere Ansichten aktiviert, berechnet Werkplan den kleinsten gemeinsamen g
 Unter **Maßstab & Richtmaß → Exportmaßstab** stehen folgende Möglichkeiten zur Verfügung:
 
 - **Automatisch einpassen**: Werkplan berechnet den kleinsten gemeinsamen Maßstab, bei dem alle aktivierten Ansichten vollständig passen.
-- Voreinstellungen `1:1`, `1:2`, `1:5`, `1:10`, `1:20`, `1:50` und `1:100`.
-- **Benutzerdefiniert**: Ein beliebiger Nenner wie `1:7,5` kann eingegeben werden.
+- Voreinstellungen von Vergrößerungen `10:1`, `5:1`, `2:1` bis zu Verkleinerungen wie `1:100`.
+- **Benutzerdefiniert**: Ein beliebiger Nenner kann eingegeben werden. Werte kleiner als `1` erzeugen Vergrößerungen, zum Beispiel `0,5` für `2:1`.
 
 Der Exportmaßstab gilt gemeinsam für alle aktivierten Ansichten, damit Größen direkt vergleichbar bleiben. Ist ein manuell gewählter Maßstab zu groß für den verfügbaren Blattbereich, zeigt die Projektprüfung den mindestens benötigten Wert an. Der gewählte Wert wird trotzdem verwendet; die Ansichtsgrenzen schützen Blattrahmen und Schriftfeld vor Überläufen.
 

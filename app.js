@@ -108,7 +108,7 @@ function syncExportScaleControls() {
   if (!select || !wrap || !input || !status) return;
   if (state.exportScaleMode === 'auto') { select.value = 'auto'; wrap.hidden = true; status.textContent = 'Wird beim Export automatisch passend berechnet.'; }
   else {
-    const preset = [...select.options].some(option => option.value === String(state.exportScale)); select.value = preset ? String(state.exportScale) : 'custom'; wrap.hidden = preset; input.value = state.exportScale; status.textContent = `Fest eingestellt: 1:${trimNumber(state.exportScale)}`;
+    const preset = [...select.options].some(option => option.value === String(state.exportScale)); select.value = preset ? String(state.exportScale) : 'custom'; wrap.hidden = preset; input.value = state.exportScale; status.textContent = `Fest eingestellt: ${formatScaleRatio(state.exportScale)}`;
   }
 }
 function updateSheetFromState() {
@@ -470,6 +470,11 @@ function materialDimensionsFromObject(object) {
 function trimNumber(value) {
   return Number(value.toFixed(3)).toString().replace('.', ',');
 }
+function formatScaleRatio(scale) {
+  const value = Number(scale);
+  if (!Number.isFinite(value) || value <= 0) return '1:1';
+  return value >= 1 ? `1:${trimNumber(value)}` : `${trimNumber(1 / value)}:1`;
+}
 function parseMaterialNumber(value, fallback = 0) {
   const number = Number(String(value ?? '').replace(',', '.'));
   return Number.isFinite(number) ? number : fallback;
@@ -697,8 +702,8 @@ function projectWarnings() {
     if (x < 28 || y < 28 || x + width > sheet.width - 28 || y + height > sheet.height - 28) warnings.push({ type: 'view', view, message: `${viewNames[view]} liegt teilweise außerhalb des ${state.sheetFormat}-Exportblatts.` });
   });
   if (state.exportScaleMode === 'manual') {
-    const requiredScale = calculateCommonExportRequirement(exportViewGroups());
-    if (state.exportScale + 0.001 < requiredScale) warnings.push({ type: 'view', message: `Der manuelle Exportmaßstab 1:${trimNumber(state.exportScale)} ist zu groß für den Inhalt. Mindestens 1:${trimNumber(Math.ceil(requiredScale * 10) / 10)} wird benötigt.` });
+    const requiredScale = calculateCommonExportRequirement(exportViewGroups(), 0.001, state.exportScale);
+    if (state.exportScale + 0.001 < requiredScale) warnings.push({ type: 'view', message: `Der manuelle Exportmaßstab ${formatScaleRatio(state.exportScale)} ist zu groß für den Inhalt. Mindestens ${formatScaleRatio(Math.ceil(requiredScale * 1000) / 1000)} wird benötigt.` });
   }
   return warnings;
 }
@@ -799,8 +804,16 @@ function exportDrawingAreaHeight() {
   const reservedMaterial = materialTableHeight() ? materialTableHeight() + 32 : 0;
   return Math.max(120, titleTop - sheet.margin - 16 - reservedMaterial);
 }
-function calculateRequiredExportScale(bounds, usableWidth = sheet.width - sheet.margin * 2, usableHeight = exportDrawingAreaHeight()) {
-  return Math.max((bounds.maxX - bounds.minX) / usableWidth, (bounds.maxY - bounds.minY) / usableHeight, 1);
+function exportPaddingMm(rawBounds, calibrationFactor = 1, exportScale = null) {
+  if (!rawBounds) return 0;
+  const factor = Number(calibrationFactor) > 0 ? Number(calibrationFactor) : 1;
+  const realExtent = Math.max(rawBounds.maxX - rawBounds.minX, rawBounds.maxY - rawBounds.minY) * factor;
+  const paddingMm = Math.min(500, Math.max(150, realExtent * 0.08));
+  const scale = Number(exportScale);
+  return Number.isFinite(scale) && scale > 0 ? Math.min(paddingMm, Math.max(6, 28 * scale)) : paddingMm;
+}
+function calculateRequiredExportScale(bounds, usableWidth = sheet.width - sheet.margin * 2, usableHeight = exportDrawingAreaHeight(), minimumScale = 1) {
+  return Math.max((bounds.maxX - bounds.minX) / usableWidth, (bounds.maxY - bounds.minY) / usableHeight, minimumScale);
 }
 function calculateAutoScale() {
   updateSheetFromState();
@@ -1858,18 +1871,17 @@ function renderExportMaterialMarkers(layer, bounds, exportScale, objects = state
     layer.append(group);
   });
 }
-function calculateCommonExportRequirement(groups = exportViewGroups()) {
-  if (!groups.length) return 1;
+function calculateCommonExportRequirement(groups = exportViewGroups(), minimumScale = 1, exportScaleForPadding = null) {
+  if (!groups.length) return minimumScale;
   const gap = groups.length > 1 ? 28 : 0; const labelHeight = 24;
   const slotWidth = (sheet.width - sheet.margin * 2 - gap * (groups.length - 1)) / groups.length;
   const usableHeight = Math.max(120, exportDrawingAreaHeight() - labelHeight);
-  return Math.max(1, ...groups.map(group => {
+  return Math.max(minimumScale, ...groups.map(group => {
     const factor = viewCalibrationFactor(group.view); const rawBounds = exportBoundsForObjects(group.objects);
-    if (!rawBounds) return 1;
-    const realExtent = Math.max(rawBounds.maxX - rawBounds.minX, rawBounds.maxY - rawBounds.minY) * factor;
-    const paddingMm = Math.min(500, Math.max(150, realExtent * 0.08));
+    if (!rawBounds) return minimumScale;
+    const paddingMm = exportPaddingMm(rawBounds, factor, exportScaleForPadding);
     const bounds = exportBoundsForObjects(group.objects, paddingMm / factor);
-    return calculateRequiredExportScale(bounds, slotWidth, usableHeight) * factor;
+    return calculateRequiredExportScale(bounds, slotWidth, usableHeight, minimumScale) * factor;
   }));
 }
 function renderExportViews(root) {
@@ -1885,18 +1897,18 @@ function renderExportViews(root) {
     const setting = ensureViewSetting(group.view);
     const calibrationFactor = viewCalibrationFactor(group.view);
     const rawBounds = exportBoundsForObjects(group.objects);
-    const realExtent = rawBounds ? Math.max(rawBounds.maxX - rawBounds.minX, rawBounds.maxY - rawBounds.minY) * calibrationFactor : 0;
-    const paddingMm = Math.min(500, Math.max(150, realExtent * 0.08));
+    const paddingMm = exportPaddingMm(rawBounds, calibrationFactor);
     const bounds = exportBoundsForObjects(group.objects, paddingMm / calibrationFactor);
     const x = Number.isFinite(setting.exportX) ? setting.exportX : sheet.margin + index * (slotWidth + gap);
     const y = Number.isFinite(setting.exportY) ? setting.exportY : sheet.margin + labelHeight;
     const usableHeight = Math.max(120, areaHeight - labelHeight);
-    const requiredScale = bounds ? calculateRequiredExportScale(bounds, slotWidth, usableHeight) * calibrationFactor : 1;
-    return { ...group, bounds, x, y, usableHeight, requiredScale, setting, calibrationFactor };
+    const requiredScale = bounds ? calculateRequiredExportScale(bounds, slotWidth, usableHeight, 0.001) * calibrationFactor : 0.001;
+    return { ...group, bounds, rawBounds, x, y, usableHeight, requiredScale, setting, calibrationFactor };
   });
   const filledLayouts = viewLayouts.filter(layout => layout.bounds);
   const minimumCommonScale = Math.max(1, ...filledLayouts.map(layout => layout.requiredScale));
-  const commonScale = state.exportScaleMode === 'manual' ? Math.max(1, Number(state.exportScale) || 1) : Math.max(1, Math.ceil(minimumCommonScale));
+  const manualScale = Number(state.exportScale);
+  const commonScale = state.exportScaleMode === 'manual' && Number.isFinite(manualScale) && manualScale > 0 ? manualScale : Math.max(1, Math.ceil(minimumCommonScale));
   viewLayouts.forEach((group, groupIndex) => {
     addTableText(drawing, group.x, sheet.margin + 15, viewNames[group.view], { 'font-size': 13, 'font-weight': 700, fill: '#263238' });
     if (groups.length > 1) {
@@ -1912,12 +1924,14 @@ function renderExportViews(root) {
     drawing.append(clipPath);
     const viewLayer = makeSvg('g', { class: 'export-view-content', 'data-view': group.view, 'clip-path': `url(#${clipId})` });
     const coordinateScale = commonScale / group.calibrationFactor;
-    const renderedWidth = (group.bounds.maxX - group.bounds.minX) / coordinateScale;
-    const renderedHeight = (group.bounds.maxY - group.bounds.minY) / coordinateScale;
+    const renderPaddingMm = state.exportScaleMode === 'manual' ? exportPaddingMm(group.rawBounds, group.calibrationFactor, commonScale) : exportPaddingMm(group.rawBounds, group.calibrationFactor);
+    const renderBounds = exportBoundsForObjects(group.objects, renderPaddingMm / group.calibrationFactor) || group.bounds;
+    const renderedWidth = (renderBounds.maxX - renderBounds.minX) / coordinateScale;
+    const renderedHeight = (renderBounds.maxY - renderBounds.minY) / coordinateScale;
     const contentX = group.x + Math.max(0, (slotWidth - renderedWidth) / 2);
     const contentY = group.y + Math.max(0, (group.usableHeight - renderedHeight) / 2);
-    group.objects.forEach(object => renderExportObject(object, viewLayer, group.bounds, coordinateScale, contentX, contentY));
-    renderExportMaterialMarkers(viewLayer, group.bounds, coordinateScale, group.objects, contentX, contentY);
+    group.objects.forEach(object => renderExportObject(object, viewLayer, renderBounds, coordinateScale, contentX, contentY));
+    renderExportMaterialMarkers(viewLayer, renderBounds, coordinateScale, group.objects, contentX, contentY);
     drawing.append(viewLayer);
   });
   root.append(drawing);
@@ -2001,7 +2015,7 @@ function buildSheetSvg() {
   const titleX = sheet.width - sheet.margin - 540; const titleY = sheet.height - sheet.margin - sheet.titleHeight;
   root.append(makeSvg('rect', { x: titleX, y: titleY, width: 540, height: sheet.titleHeight, fill: '#fffdf8', stroke: '#263238', 'stroke-width': 1.2 }));
   addTitleCell(root, titleX, titleY, 270, 59, 'Projekt', state.projectName);
-  addTitleCell(root, titleX + 270, titleY, 135, 59, 'Massstab', `1:${trimNumber(Number(exportScale))}`);
+  addTitleCell(root, titleX + 270, titleY, 135, 59, 'Massstab', formatScaleRatio(exportScale));
   addTitleCell(root, titleX + 405, titleY, 135, 59, 'Einheit', 'mm');
   addTitleCell(root, titleX, titleY + 59, 180, 59, 'Zeichnung', state.drawingNumber);
   addTitleCell(root, titleX + 180, titleY + 59, 150, 59, 'Bearbeiter', state.drawnBy);
@@ -2207,13 +2221,13 @@ document.querySelector('#sheetFormat')?.addEventListener('change', event => { st
 document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; setDirty(); render(); setStatus('Blattausrichtung geändert'); });
 document.querySelector('#exportScaleSelect').addEventListener('change', event => {
   if (event.target.value === 'custom') {
-    state.exportScaleMode = 'manual'; document.querySelector('#customExportScaleWrap').hidden = false; document.querySelector('#exportScaleStatus').textContent = 'Eigenen Nenner eingeben.'; document.querySelector('#customExportScale').focus(); setDirty(); renderProjectWarnings(); return;
+    state.exportScaleMode = 'manual'; document.querySelector('#customExportScaleWrap').hidden = false; document.querySelector('#exportScaleStatus').textContent = 'Nenner eingeben: 0,5 ergibt 2:1.'; document.querySelector('#customExportScale').focus(); setDirty(); renderProjectWarnings(); return;
   }
   if (event.target.value === 'auto') state.exportScaleMode = 'auto';
   else { state.exportScaleMode = 'manual'; state.exportScale = Number(event.target.value); }
   setDirty(); syncExportScaleControls(); renderProjectWarnings();
 });
-document.querySelector('#customExportScale').addEventListener('change', event => { const value = Number(event.target.value); if (Number.isFinite(value) && value >= 1) { state.exportScaleMode = 'manual'; state.exportScale = value; setDirty(); syncExportScaleControls(); renderProjectWarnings(); } });
+document.querySelector('#customExportScale').addEventListener('change', event => { const value = Number(String(event.target.value).replace(',', '.')); if (Number.isFinite(value) && value > 0) { state.exportScaleMode = 'manual'; state.exportScale = value; setDirty(); syncExportScaleControls(); renderProjectWarnings(); } });
 document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); setDirty(); render(); setStatus('Exportansichten geändert'); }));
 document.querySelectorAll('.view-button').forEach(button => button.addEventListener('click', () => setActiveView(button.dataset.view)));
 document.querySelector('#commandSearch').addEventListener('input', () => { commandSelectionIndex = 0; renderCommandResults(); });
@@ -2262,4 +2276,3 @@ renderMaterialList();
 syncScaleControls();
 applyViewBox();
 render();
-
