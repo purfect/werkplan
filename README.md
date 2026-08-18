@@ -11,27 +11,34 @@ Kleines lokales Zeichenprogramm fuer technische Entwurfszeichnungen.
 ### Auswahl (Werkzeug 1)
 - **Objekt anklicken**: Wählt das Objekt aus und zeigt seine Eigenschaften
 - **Ausgewähltes Objekt verschieben**: Mit der Maus auf dem Objekt halten und ziehen (Drag & Drop)
-- **Eigenschaften bearbeiten**: Werte im rechten Panel ändern und "Änderungen übernehmen" klicken
+- **Eigenschaften bearbeiten**: Werte im rechten Panel ändern; die Änderung wird beim Verlassen des Feldes direkt übernommen
 - **Objekt löschen**: "Auswahl löschen" Button klicken
+
+Im Eigenschaftenbereich stehen zusätzlich exaktes Verschieben und Duplizieren, Drehen, horizontales und vertikales Spiegeln sowie rechteckige und kreisförmige Wiederholungen zur Verfügung. Linien können an Anfang oder Ende um einen festen Betrag getrimmt oder verlängert und an einer exakten Länge geteilt werden.
 
 ### Linie (Werkzeug 2)
 Klicken und ziehen für eine gerade Linie.
 
-### Polylinie (Werkzeug 3)
-Mehrfaches Klicken für Punkte; Rechtsklick oder ESC zum Beenden.
+### Kreis (Werkzeug 3)
+Vom Mittelpunkt nach außen ziehen. Zielradius und Winkel können links exakt vorgegeben werden.
 
-### Rechteck (Werkzeug 4)
+### Halbkreis (Werkzeug 4)
+Vom Mittelpunkt zum Rand ziehen. Die Ausrichtung folgt dem gezeichneten Winkel.
+
+### Rechteck (Werkzeug 5)
 Klicken und ziehen für ein Rechteck.
 
-### Bemaßung (Werkzeug 5)
+### Bemaßung (Werkzeug 6)
 Linie mit Beschriftung. Die Länge wird automatisch berechnet.
 
-### Text (Werkzeug 6)
+### Text (Werkzeug 7)
 Klicken, Text eingeben, Enter zum Bestätigen.
 
 ## Maßstab und Richtmaß
 
 Rechts unter **Maßstab & Richtmaß** kann zwischen 1:1, 1:10, 1:20, 1:50, 1:100 oder einem eigenen Maßstab gewählt werden. Die Objekte werden immer in echten Millimetern gespeichert; der Maßstab steuert nur, wie viel davon auf dem Zeichenblatt sichtbar ist. Bei 1:20 entsprechen 100 mm auf dem Blatt 2.000 mm in der Planung.
+
+Die aktive Arbeitsansicht wird direkt in der Leiste oberhalb der Zeichenfläche umgeschaltet. Das farbig hervorgehobene Segment und die ausgeschriebene Bezeichnung zeigen jederzeit, ob gerade Frontansicht, Seitenansicht, Draufsicht oder Detail bearbeitet wird.
 
 ### Ein Richtmaß setzen
 
@@ -40,4 +47,20 @@ Rechts unter **Maßstab & Richtmaß** kann zwischen 1:1, 1:10, 1:20, 1:50, 1:100
 3. Rechts im Bereich **Richtmaß festlegen** die echte Länge eintragen, zum Beispiel `1800 mm`.
 4. **Übernehmen** klicken.
 
-Die gesamte Zeichnung wird proportional kalibriert. Die ausgewählte Linie ist danach exakt 1,8 m lang; alle weiteren Objekte können sich an diesem Maß orientieren.
+Nur die aktive Ansicht wird proportional kalibriert. Die ausgewählte Linie ist danach exakt 1,8 m lang; alle weiteren Objekte derselben Ansicht werden im gleichen Verhältnis angepasst. Frontansicht, Seitenansicht, Draufsicht und Detail können dadurch unabhängig voneinander unterschiedliche Richtmaße und Größen verwenden.
+
+Zum Kalibrieren einer weiteren Ansicht diese unter **Aktive Ansicht** auswählen, dort eine Linie oder ein Rechteck markieren und ein eigenes Richtmaß übernehmen. Unter der Auswahl der aktiven Ansicht wird das zuletzt gesetzte Richtmaß angezeigt.
+
+## Navigation
+
+- **Mausrad**: Um die Cursorposition zoomen
+- **Mittlere Maustaste ziehen**: Zeichenfläche verschieben
+- **Leertaste und linke Maustaste ziehen**: Zeichenfläche verschieben
+- **Alles**: Alle Objekte der aktiven Ansicht einpassen
+- **Auswahl**: Das ausgewählte Objekt einpassen
+
+## Speichern und Export
+
+Ein Stern vor dem Fenstertitel zeigt ungespeicherte Änderungen an. Projektdateien verwenden ab Version 4 auch gedrehte Objekte und ab Version 5 getrennte Richtmaße pro Ansicht. Beim PDF-Export stehen die ersten sechs Materialpositionen auf dem Zeichnungsblatt; alle weiteren Positionen werden automatisch auf so viele Folgeseiten verteilt, wie benötigt werden.
+
+Die verwendeten Schriften liegen als WOFF2-Dateien im Ordner `fonts`. Werkplan benötigt deshalb auch für die Typografie keine Internetverbindung. Die zugehörigen OFL-Lizenztexte befinden sich im selben Ordner.

@@ -99,13 +99,23 @@
 
       <div class="section-divider"></div>
       <div class="panel-heading"><span>Ansicht</span></div>
-      <div class="view-actions"><button id="zoomOut" class="small-button">−</button><strong id="zoomLabel">100%</strong><button id="zoomIn" class="small-button">+</button><button id="fitView" class="fit-button">Einpassen</button></div>
+      <div class="view-actions"><button id="zoomOut" class="small-button">−</button><strong id="zoomLabel">100%</strong><button id="zoomIn" class="small-button">+</button><button id="fitView" class="fit-button">Alles</button><button id="fitSelection" class="fit-button">Auswahl</button></div>
       <label class="check-row"><input id="gridToggle" type="checkbox" checked> Raster anzeigen</label>
       <label class="check-row"><input id="snapToggle" type="checkbox" checked> Am Raster einrasten</label>
     </aside>
 
     <section class="drawing-area">
-      <div class="canvas-toolbar"><span id="toolHint">Auswahl aktiv</span><span class="canvas-meta">A3 quer &middot; <span id="scaleMeta">1:20</span></span></div>
+      <div class="canvas-toolbar">
+        <span id="toolHint">Auswahl aktiv</span>
+        <div class="view-switcher" role="group" aria-label="Aktive Arbeitsansicht">
+          <span class="view-switcher-label">Arbeitsansicht</span>
+          <button type="button" class="view-button active" data-view="front">Front</button>
+          <button type="button" class="view-button" data-view="side">Seite</button>
+          <button type="button" class="view-button" data-view="top">Drauf</button>
+          <button type="button" class="view-button" data-view="detail">Detail</button>
+        </div>
+        <span class="canvas-meta"><strong id="activeViewLabel">Frontansicht</strong> &middot; A3 quer &middot; <span id="scaleMeta">1:20</span></span>
+      </div>
       <div id="canvasWrap" class="canvas-wrap">
         <svg id="drawingCanvas" viewBox="0 0 1200 760" aria-label="Technische Zeichenfl&auml;che">
           <defs><pattern id="gridSmall" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="#d7e0e1" stroke-width="0.6"/></pattern><pattern id="gridLarge" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#gridSmall)"/><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#b5c5c5" stroke-width="1"/></pattern></defs>
@@ -146,17 +156,16 @@
         <summary class="panel-heading"><span>Ma&szlig;stab &amp; Richtma&szlig;</span></summary>
         <label class="field-label" for="sheetFormat">Blatt</label>
         <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
-        <label class="field-label" for="activeView">Ansichten im Export</label>
+        <label class="field-label">Ansichten im Export</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="front" checked> Frontansicht</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="side"> Seitenansicht</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="top"> Draufsicht</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="detail"> Detail</label>
-        <label class="field-label" for="activeView">Aktive Ansicht</label>
-        <select id="activeView" class="text-input"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select>
+        <div id="viewReferenceStatus" class="scale-note">Frontansicht: kein Richtmaß gesetzt</div>
         <label class="field-label" for="scaleSelect">Darstellung</label>
         <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
         <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Ma&szlig;stab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
-        <div class="scale-note">Ein gezeichnetes Blattma&szlig; von 100 mm entspricht bei 1:20 einem echten Ma&szlig; von 2.000 mm.</div>
+        <div id="scaleDescription" class="scale-note">Ein gezeichnetes Blattma&szlig; von 100 mm entspricht bei 1:20 einem echten Ma&szlig; von 2.000 mm.</div>
         <div class="tip-box"><strong>Arbeitsweise</strong><span>Ma&szlig;e werden beim Zeichnen in Millimetern erfasst. Mit <b>Strg + S</b> speicherst du jederzeit den aktuellen Stand.</span></div>
       </details>
     </aside>

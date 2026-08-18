@@ -5,11 +5,12 @@ const emptyState = document.querySelector('#emptyState');
 const statusText = document.querySelector('#statusText');
 const propertyPanel = document.querySelector('#propertyPanel');
 const fileInput = document.querySelector('#fileInput');
+const documentTitle = document.title;
 
 const state = {
   tool: 'select', style: 'solid', strokeWidth: 0.75, strokeColor: '#263238',
   snap: true, grid: true, zoom: 1, scale: 20, projectName: 'Projekt01',
-  objects: [], draft: null, history: []
+  objects: [], draft: null, history: [], dirty: false
 };
 state.autoScale = true;
 state.drawingNumber = 'TZ-001';
@@ -22,6 +23,7 @@ state.sheetFormat = 'A3';
 state.sheetOrientation = 'landscape';
 state.enabledViews = ['front'];
 state.activeView = 'front';
+state.viewReferences = {};
 let pointerStart = null;
 let selectedId = null;
 let draggingObject = null;
@@ -33,6 +35,9 @@ let polylinePoints = [];
 let clipboard = null;
 let currentSnap = null;
 let angleReferenceId = null;
+let viewBox = { x: 0, y: 0, width: 1200, height: 760 };
+let panStart = null;
+let spacePressed = false;
 
 const svgNS = 'http://www.w3.org/2000/svg';
 const snapSize = 10;
@@ -106,15 +111,20 @@ function addSnapCandidate(candidates, point, x1, y1, x2, y2) {
 function addPointCandidate(candidates, rawPoint, snapPointValue, type) {
   candidates.push({ point: snapPointValue, distance: distance(rawPoint, snapPointValue), type });
 }
+function rectCorners(object) {
+  const center = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
+  return [
+    { x: object.x, y: object.y }, { x: object.x + object.width, y: object.y },
+    { x: object.x + object.width, y: object.y + object.height }, { x: object.x, y: object.y + object.height }
+  ].map(point => rotatePoint(point, center, object.rotation || 0));
+}
 function lineSegments() {
   const segments = [];
   activeViewObjects().forEach(object => {
     if (object.type === 'line') segments.push({ x1: object.x1, y1: object.y1, x2: object.x2, y2: object.y2 });
     if (object.type === 'rect') {
-      segments.push({ x1: object.x, y1: object.y, x2: object.x + object.width, y2: object.y });
-      segments.push({ x1: object.x + object.width, y1: object.y, x2: object.x + object.width, y2: object.y + object.height });
-      segments.push({ x1: object.x + object.width, y1: object.y + object.height, x2: object.x, y2: object.y + object.height });
-      segments.push({ x1: object.x, y1: object.y + object.height, x2: object.x, y2: object.y });
+      const corners = rectCorners(object);
+      corners.forEach((point, index) => { const next = corners[(index + 1) % corners.length]; segments.push({ x1: point.x, y1: point.y, x2: next.x, y2: next.y }); });
     }
     if (object.type === 'polyline') object.points.slice(1).forEach((pointB, index) => {
       const pointA = object.points[index];
@@ -173,8 +183,8 @@ function snapPoint(point) { return state.snap ? { x: Math.round(point.x / snapSi
 function eventPoint(event, objectSnap = false, snapOrigin = null) {
   const svg = canvas;
   const rect = svg.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width * 1200;
-  const y = (event.clientY - rect.top) / rect.height * 760;
+  const x = viewBox.x + (event.clientX - rect.left) / rect.width * viewBox.width;
+  const y = viewBox.y + (event.clientY - rect.top) / rect.height * viewBox.height;
   const snappedX = state.snap ? Math.round(x / snapSize) * snapSize : x;
   const snappedY = state.snap ? Math.round(y / snapSize) * snapSize : y;
   const rawPoint = { x: x * state.scale, y: y * state.scale };
@@ -298,7 +308,7 @@ function parseMaterialNumber(value, fallback = 0) {
 function calculatedMaterialQuantity(item) {
   const object = state.objects.find(entry => entry.id === item.objectId);
   if (!object) return '';
-  const count = Math.max(1, parseMaterialNumber(item.objectQty, 1));
+  const count = 1;
   let value = null;
   if (item.unit === 'St') value = count;
   if (item.unit === 'm') {
@@ -383,7 +393,7 @@ function renderMaterialList() {
       updateMaterialsFromForm();
       render();
     });
-    row.querySelectorAll('input,select').forEach(input => input.addEventListener('input', updateMaterialsFromForm));
+    row.querySelectorAll('input,select').forEach(input => input.addEventListener('input', () => { updateMaterialsFromForm(); setDirty(); }));
     row.querySelector('[name="pos"]').addEventListener('change', () => { updateMaterialsFromForm(); render(); });
     row.querySelector('.calc-material').addEventListener('click', () => {
       updateMaterialsFromForm();
@@ -391,10 +401,11 @@ function renderMaterialList() {
       const calculated = calculatedMaterialQuantity(current);
       if (!calculated) { setStatus('Für diese Einheit ist keine Berechnung möglich'); return; }
       state.materials[index].qty = calculated;
+      setDirty();
       renderMaterialList();
       setStatus('Menge aus Objekt berechnet');
     });
-    row.querySelector('.remove-material').addEventListener('click', () => { updateMaterialsFromForm(); state.materials.splice(index, 1); renderMaterialList(); render(); });
+    row.querySelector('.remove-material').addEventListener('click', () => { updateMaterialsFromForm(); state.materials.splice(index, 1); setDirty(); renderMaterialList(); render(); });
     list.append(row);
   });
 }
@@ -412,7 +423,10 @@ function objectBounds(object) {
     ];
     return { minX: Math.min(...points.map(point => point.x)) - 250, minY: Math.min(...points.map(point => point.y)) - 250, maxX: Math.max(...points.map(point => point.x)) + 250, maxY: Math.max(...points.map(point => point.y)) + 250 };
   }
-  if (object.type === 'rect') return { minX: object.x, minY: object.y, maxX: object.x + object.width, maxY: object.y + object.height };
+  if (object.type === 'rect') {
+    const corners = rectCorners(object);
+    return { minX: Math.min(...corners.map(point => point.x)), minY: Math.min(...corners.map(point => point.y)), maxX: Math.max(...corners.map(point => point.x)), maxY: Math.max(...corners.map(point => point.y)) };
+  }
   if (object.type === 'circle' || object.type === 'semicircle') return { minX: object.x - object.r, minY: object.y - object.r, maxX: object.x + object.r, maxY: object.y + object.r };
   if (object.type === 'angleDimension') return { minX: object.cx - object.r, minY: object.cy - object.r, maxX: object.cx + object.r, maxY: object.cy + object.r };
   if (object.type === 'polyline') {
@@ -456,16 +470,29 @@ function activeViewObjects() {
 function syncViewControls() {
   const enabled = enabledViews();
   document.querySelectorAll('.view-toggle').forEach(input => { input.checked = enabled.includes(input.value); });
-  const active = document.querySelector('#activeView');
-  if (active) active.value = viewNames[state.activeView] ? state.activeView : enabled[0];
+  document.querySelectorAll('.view-button').forEach(button => {
+    const active = button.dataset.view === state.activeView;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const label = document.querySelector('#activeViewLabel');
+  if (label) label.textContent = viewNames[state.activeView] || viewNames[enabled[0]];
 }
 function updateViewsFromControls() {
   const selected = [...document.querySelectorAll('.view-toggle:checked')].map(input => input.value).filter(view => viewNames[view]);
   state.enabledViews = selected.length ? selected : ['front'];
   if (!state.enabledViews.includes(state.activeView)) state.activeView = state.enabledViews[0];
-  const active = document.querySelector('#activeView')?.value;
-  if (active && state.enabledViews.includes(active)) state.activeView = active;
   syncViewControls();
+}
+function setActiveView(view) {
+  if (!viewNames[view]) return;
+  state.activeView = view;
+  if (!enabledViews().includes(view)) state.enabledViews = [...enabledViews(), view];
+  selectedId = null;
+  syncViewControls();
+  render();
+  setDirty();
+  setStatus(`${viewNames[view]} aktiv`);
 }
 function exportViewGroups() {
   const visible = state.objects.filter(object => object.visible !== false);
@@ -517,8 +544,10 @@ function syncScaleControls() {
 }
 function updateScaleUi() {
   const effectiveScale = state.autoScale ? calculateAutoScale() : state.scale;
+  const reference = state.viewReferences[state.activeView];
   document.querySelector('#scaleMeta').textContent = state.autoScale ? `Auto 1:${effectiveScale}` : `1:${state.scale}`;
-  document.querySelector('.scale-note').textContent = state.autoScale ? `Der Exportmaßstab wird automatisch als 1:${effectiveScale} errechnet. Die Arbeitsfläche bleibt beim Zeichnen stabil.` : `Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:${state.scale} einem echten Maß von ${formatLength(100 * state.scale)}.`;
+  document.querySelector('#viewReferenceStatus').textContent = reference ? `${viewNames[state.activeView]}: zuletzt ${formatLength(reference.targetLength)}` : `${viewNames[state.activeView]}: kein Richtmaß gesetzt`;
+  document.querySelector('#scaleDescription').textContent = state.autoScale ? `Der Exportmaßstab wird automatisch als 1:${effectiveScale} errechnet. Die Arbeitsfläche bleibt beim Zeichnen stabil.` : `Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:${state.scale} einem echten Maß von ${formatLength(100 * state.scale)}.`;
   document.querySelector('#gridStatus').textContent = `Raster ${formatLength(snapSize * state.scale)}`;
 }
 function setScale(value) {
@@ -526,6 +555,7 @@ function setScale(value) {
   if (!Number.isFinite(nextScale) || nextScale < 1) return;
   state.autoScale = false;
   state.scale = Math.round(nextScale);
+  setDirty();
   syncScaleControls();
   render();
   setStatus(`Maßstab 1:${state.scale} eingestellt`);
@@ -559,7 +589,10 @@ function renderObject(object, layer = drawingLayer) {
   let element;
   const attrs = styleAttrs(object);
   if (object.type === 'line') element = makeSvg('line', { ...attrs, x1: canvasValue(object.x1), y1: canvasValue(object.y1), x2: canvasValue(object.x2), y2: canvasValue(object.y2) });
-  if (object.type === 'rect') element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: canvasValue(object.x), y: canvasValue(object.y), width: canvasValue(object.width), height: canvasValue(object.height) });
+  if (object.type === 'rect') {
+    const centerX = canvasValue(object.x + object.width / 2); const centerY = canvasValue(object.y + object.height / 2);
+    element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: canvasValue(object.x), y: canvasValue(object.y), width: canvasValue(object.width), height: canvasValue(object.height), transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${centerX} ${centerY})` });
+  }
   if (object.type === 'circle') element = makeSvg('circle', { ...attrs, cx: canvasValue(object.x), cy: canvasValue(object.y), r: canvasValue(object.r) });
   if (object.type === 'semicircle') element = makeSvg('path', { ...attrs, d: semicirclePath(object) });
   if (object.type === 'polyline') element = makeSvg('polyline', { ...attrs, points: object.points.map(point => `${canvasValue(point.x)},${canvasValue(point.y)}`).join(' ') });
@@ -592,7 +625,7 @@ function renderObject(object, layer = drawingLayer) {
     const label = makeSvg('text', { x: (ax + bx) / 2, y: (ay + by) / 2 - 7, 'text-anchor': 'middle', class: 'dimension-label', 'font-size': style.textSize });
     label.textContent = dimensionLabelText(object, length); element.append(label);
   }
-  if (object.type === 'text') { element = makeSvg('text', { ...attrs, x: canvasValue(object.x), y: canvasValue(object.y), stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16 }); element.textContent = object.value; }
+  if (object.type === 'text') { const x = canvasValue(object.x); const y = canvasValue(object.y); element = makeSvg('text', { ...attrs, x, y, stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x} ${y})` }); element.textContent = object.value; }
   if (!element) return null;
   element.dataset.id = object.id;
   if (object.id === selectedId) element.classList.add('selected-shape');
@@ -632,15 +665,19 @@ function renderMaterialMarkers() {
 function newId() { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 function snapshotObjects() { return JSON.stringify(state.objects); }
 function restoreObjects(snapshot) { state.objects = JSON.parse(snapshot); selectedId = null; render(); }
+function setDirty(dirty = true) {
+  state.dirty = dirty;
+  document.title = `${dirty ? '* ' : ''}${documentTitle}`;
+}
 function updateHistoryControls() {
   const undoButton = document.querySelector('#undoAction');
   const redoButton = document.querySelector('#redoAction');
   if (undoButton) undoButton.disabled = !state.history.length;
   if (redoButton) redoButton.disabled = !state.redo.length;
 }
-function pushHistory() { state.history.push(snapshotObjects()); state.redo = []; if (state.history.length > 30) state.history.shift(); }
-function undo() { if (!state.history.length) { setStatus('Nichts zum Rückgängig machen'); return; } state.redo.push(snapshotObjects()); restoreObjects(state.history.pop()); setStatus('Rückgängig'); }
-function redo() { if (!state.redo.length) { setStatus('Nichts zum Wiederholen'); return; } state.history.push(snapshotObjects()); restoreObjects(state.redo.pop()); setStatus('Wiederholt'); }
+function pushHistory() { state.history.push(snapshotObjects()); state.redo = []; if (state.history.length > 30) state.history.shift(); setDirty(); }
+function undo() { if (!state.history.length) { setStatus('Nichts zum Rückgängig machen'); return; } state.redo.push(snapshotObjects()); restoreObjects(state.history.pop()); setDirty(); setStatus('Rückgängig'); }
+function redo() { if (!state.redo.length) { setStatus('Nichts zum Wiederholen'); return; } state.history.push(snapshotObjects()); restoreObjects(state.redo.pop()); setDirty(); setStatus('Wiederholt'); }
 function addObject(object) { pushHistory(); state.objects.push({ ...object, id: newId(), view: object.view || state.activeView, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }); selectedId = null; render(); setStatus('Objekt hinzugefügt'); }
 function selectObject(id) {
   selectedId = id;
@@ -654,6 +691,58 @@ function selectObject(id) {
   if (object) setStatus(`${toolNames[object.type] || 'Objekt'} ausgewählt`);
 }
 function setStatus(message) { statusText.textContent = message; }
+function applyViewBox() {
+  canvas.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  state.zoom = 1200 / viewBox.width;
+  document.querySelector('#zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
+}
+function canvasScreenPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: viewBox.x + (event.clientX - rect.left) / rect.width * viewBox.width,
+    y: viewBox.y + (event.clientY - rect.top) / rect.height * viewBox.height
+  };
+}
+function setViewportZoom(nextZoom, anchor = { x: viewBox.x + viewBox.width / 2, y: viewBox.y + viewBox.height / 2 }) {
+  const zoom = Math.max(0.25, Math.min(8, nextZoom));
+  const width = 1200 / zoom;
+  const height = 760 / zoom;
+  const ratioX = (anchor.x - viewBox.x) / viewBox.width;
+  const ratioY = (anchor.y - viewBox.y) / viewBox.height;
+  viewBox = { x: anchor.x - width * ratioX, y: anchor.y - height * ratioY, width, height };
+  applyViewBox();
+}
+function fitCanvasBounds(bounds) {
+  if (!bounds) {
+    viewBox = { x: 0, y: 0, width: 1200, height: 760 };
+    applyViewBox();
+    return;
+  }
+  const padding = 45;
+  let minX = bounds.minX / state.scale - padding;
+  let minY = bounds.minY / state.scale - padding;
+  let width = Math.max(20, (bounds.maxX - bounds.minX) / state.scale + padding * 2);
+  let height = Math.max(20, (bounds.maxY - bounds.minY) / state.scale + padding * 2);
+  const aspect = 1200 / 760;
+  if (width / height > aspect) {
+    const nextHeight = width / aspect;
+    minY -= (nextHeight - height) / 2;
+    height = nextHeight;
+  } else {
+    const nextWidth = height * aspect;
+    minX -= (nextWidth - width) / 2;
+    width = nextWidth;
+  }
+  viewBox = { x: minX, y: minY, width, height };
+  applyViewBox();
+}
+function fitAllObjects() { fitCanvasBounds(boundsForObjects(activeViewObjects())); setStatus(activeViewObjects().length ? 'Zeichnung eingepasst' : 'Gesamtansicht'); }
+function fitSelectedObject() {
+  const object = state.objects.find(item => item.id === selectedId);
+  if (!object) { setStatus('Kein Objekt ausgewählt'); return; }
+  fitCanvasBounds(objectBounds(object));
+  setStatus('Auswahl eingepasst');
+}
 function objectSummary(object) {
   if (object.type === 'line') return formatLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }));
   if (object.type === 'dimension') return dimensionLabelText(object, distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }));
@@ -716,7 +805,7 @@ function renderHandles() {
     addHandle(object.x1, object.y1, 'p1');
     addHandle(object.x2, object.y2, 'p2');
   }
-  if (object.type === 'rect') {
+  if (object.type === 'rect' && Math.abs(object.rotation || 0) < 0.0001) {
     addHandle(object.x, object.y, 'nw');
     addHandle(object.x + object.width, object.y, 'ne');
     addHandle(object.x + object.width, object.y + object.height, 'se');
@@ -827,12 +916,15 @@ function showProperties(object) {
   const measuredLength = object.type === 'line' || object.type === 'dimension' ? distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) : 0;
   const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(measuredLength) : object.type === 'rect' ? `${formatLength(object.width)} x ${formatLength(object.height)}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(object.r)}` : 'Mehrpunkt';
   const rectHasAutoDimensions = object.type === 'rect' && state.objects.some(item => item.type === 'dimension' && item.sourceRectId === object.id);
-  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß festlegen</summary><span>Diese Linie als bekannte Länge für die gesamte Zeichnung verwenden.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(measuredLength || 1800)}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß festlegen</summary><span>Breite oder Höhe dieses Rechtecks als bekannte Länge für die gesamte Zeichnung verwenden.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(object.height || 1800)}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
+  const referenceViewName = viewNames[objectView(object)];
+  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Diese Linie kalibriert nur die Objekte der ${referenceViewName}. Andere Ansichten bleiben unverändert.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(measuredLength || 1800)}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Breite oder Höhe kalibriert nur die Objekte der ${referenceViewName}. Andere Ansichten bleiben unverändert.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(object.height || 1800)}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
   const rectControls = '';
   const circleControls = object.type === 'circle' || object.type === 'semicircle' ? `<button id="addRadiusDimension" class="copy-button">Radius bemaßen</button><button id="addDiameterDimension" class="copy-button">Durchmesser bemaßen</button>` : '';
   const angleControls = object.type === 'line' ? `<button id="rememberAngleLine" class="copy-button">Linie 1 merken</button><button id="addAngleDimension" class="copy-button">Winkel zu Linie 1</button>` : '';
-  propertyPanel.innerHTML = `<div class="property-form"><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label><label class="wide-field">Ansicht<select name="view"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}<button id="applyChanges" class="apply-button">Änderungen übernehmen</button><button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
-  document.querySelector('#applyChanges').addEventListener('click', applySelectedChanges);
+  const transformControls = `<details class="operation-box" open><summary>Transformieren &amp; duplizieren</summary><div class="operation-grid"><label>Δ X ${unitInput('moveX', 0)}</label><label>Δ Y ${unitInput('moveY', 0)}</label><button id="moveExact" type="button">Verschieben</button><button id="duplicateExact" type="button">Duplizieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 0, '°')}</label><button id="rotateExact" type="button">Drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button></div><div class="operation-subheading">Rechteckige Wiederholung</div><div class="operation-grid"><label>Anzahl X<input name="arrayX" type="number" min="1" max="50" value="2"></label><label>Anzahl Y<input name="arrayY" type="number" min="1" max="50" value="2"></label><label>Abstand X ${unitInput('arrayDx', 500)}</label><label>Abstand Y ${unitInput('arrayDy', 500)}</label><button id="rectArray" class="wide-field" type="button">Wiederholen</button></div><div class="operation-subheading">Kreisförmige Wiederholung</div><div class="operation-grid"><label>Anzahl<input name="circleCount" type="number" min="2" max="100" value="6"></label><label>Gesamtwinkel ${unitInput('circleAngle', 360, '°')}</label><label>Zentrum X ${unitInput('circleCenterX', 0)}</label><label>Zentrum Y ${unitInput('circleCenterY', 0)}</label><button id="circleArray" class="wide-field" type="button">Wiederholen</button></div></details>`;
+  const lineEditControls = object.type === 'line' ? `<details class="operation-box" open><summary>Linie bearbeiten</summary><div class="operation-grid"><label class="wide-field">Länge ${unitInput('lineEditLength', Math.round(measuredLength / 2), 'mm', 'min="1"')}</label><button id="trimStart" type="button">Anfang trimmen</button><button id="trimEnd" type="button">Ende trimmen</button><button id="extendStart" type="button">Anfang verlängern</button><button id="extendEnd" type="button">Ende verlängern</button><button id="splitLine" class="wide-field" type="button">Bei Länge teilen</button></div></details>` : '';
+  propertyPanel.innerHTML = `<div class="property-form"><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label><label class="wide-field">Ansicht<select name="view"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}${transformControls}${lineEditControls}<button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
+  propertyPanel.querySelector('.property-form').addEventListener('change', applySelectedChanges);
   document.querySelector('[name="view"]').value = objectView(object);
   if (object.type === 'dimension' && document.querySelector('[name="dimensionUnit"]')) document.querySelector('[name="dimensionUnit"]').value = object.dimensionUnit || '';
   document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
@@ -842,9 +934,115 @@ function showProperties(object) {
   document.querySelector('#addDiameterDimension')?.addEventListener('click', addDiameterDimension);
   document.querySelector('#rememberAngleLine')?.addEventListener('click', rememberAngleLine);
   document.querySelector('#addAngleDimension')?.addEventListener('click', addAngleDimension);
+  document.querySelector('#moveExact')?.addEventListener('click', moveSelectedExact);
+  document.querySelector('#duplicateExact')?.addEventListener('click', duplicateSelectedExact);
+  document.querySelector('#rotateExact')?.addEventListener('click', rotateSelectedExact);
+  document.querySelector('#mirrorHorizontal')?.addEventListener('click', () => mirrorSelected('horizontal'));
+  document.querySelector('#mirrorVertical')?.addEventListener('click', () => mirrorSelected('vertical'));
+  document.querySelector('#rectArray')?.addEventListener('click', createRectangularArray);
+  document.querySelector('#circleArray')?.addEventListener('click', createCircularArray);
+  document.querySelector('#trimStart')?.addEventListener('click', () => resizeSelectedLine('start', 'trim'));
+  document.querySelector('#trimEnd')?.addEventListener('click', () => resizeSelectedLine('end', 'trim'));
+  document.querySelector('#extendStart')?.addEventListener('click', () => resizeSelectedLine('start', 'extend'));
+  document.querySelector('#extendEnd')?.addEventListener('click', () => resizeSelectedLine('end', 'extend'));
+  document.querySelector('#splitLine')?.addEventListener('click', splitSelectedLine);
   document.querySelector('#addObjectMaterial')?.addEventListener('click', addSelectedToMaterialList);
   document.querySelector('#copyObject').addEventListener('click', copySelected);
   document.querySelector('#deleteSelected').addEventListener('click', deleteSelected);
+}
+function operationNumber(name, fallback = 0) {
+  const value = Number(propertyPanel.querySelector(`[name="${name}"]`)?.value);
+  return Number.isFinite(value) ? value : fallback;
+}
+function rotatePoint(point, center, angle) {
+  const cos = Math.cos(angle); const sin = Math.sin(angle); const dx = point.x - center.x; const dy = point.y - center.y;
+  return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos };
+}
+function objectCenter(object) {
+  const bounds = objectBounds(object);
+  return bounds ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 } : { x: 0, y: 0 };
+}
+function translateObject(object, dx, dy) {
+  if (object.type === 'line' || object.type === 'dimension') { object.x1 += dx; object.y1 += dy; object.x2 += dx; object.y2 += dy; }
+  if (object.type === 'rect' || object.type === 'circle' || object.type === 'semicircle' || object.type === 'text') { object.x += dx; object.y += dy; }
+  if (object.type === 'angleDimension') { object.cx += dx; object.cy += dy; }
+  if (object.type === 'polyline') object.points.forEach(point => { point.x += dx; point.y += dy; });
+  syncLinkedDimensions(object);
+}
+function rotateObject(object, angle, center = objectCenter(object)) {
+  if (object.type === 'line' || object.type === 'dimension') {
+    const a = rotatePoint({ x: object.x1, y: object.y1 }, center, angle); const b = rotatePoint({ x: object.x2, y: object.y2 }, center, angle);
+    object.x1 = a.x; object.y1 = a.y; object.x2 = b.x; object.y2 = b.y;
+  }
+  if (object.type === 'rect') {
+    const currentCenter = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
+    const rotatedCenter = rotatePoint(currentCenter, center, angle);
+    object.x = rotatedCenter.x - object.width / 2; object.y = rotatedCenter.y - object.height / 2;
+    object.rotation = (object.rotation || 0) + angle;
+  }
+  if (object.type === 'semicircle') object.angle = (object.angle || 0) + angle;
+  if (object.type === 'polyline') object.points = object.points.map(point => rotatePoint(point, center, angle));
+  if (object.type === 'angleDimension') { const point = rotatePoint({ x: object.cx, y: object.cy }, center, angle); object.cx = point.x; object.cy = point.y; object.startAngle += angle; object.endAngle += angle; }
+  if (object.type === 'text') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; object.rotation = (object.rotation || 0) + angle; }
+  if (object.type === 'circle') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; }
+  if (object.type === 'semicircle') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; }
+  syncLinkedDimensions(object);
+}
+function cloneObject(object) { const copy = JSON.parse(JSON.stringify(object)); copy.id = newId(); delete copy.sourceRectId; delete copy.autoRectSide; return copy; }
+function moveSelectedExact() {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  pushHistory(); translateObject(object, operationNumber('moveX'), operationNumber('moveY')); render(); setStatus('Objekt exakt verschoben');
+}
+function duplicateSelectedExact() {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  pushHistory(); const copy = cloneObject(object); translateObject(copy, operationNumber('moveX'), operationNumber('moveY')); state.objects.push(copy); selectedId = copy.id; render(); setStatus('Exaktes Duplikat erstellt');
+}
+function rotateSelectedExact() {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  pushHistory(); rotateObject(object, operationNumber('rotateAngle') * Math.PI / 180); render(); setStatus('Objekt gedreht');
+}
+function mirrorPoint(point, center, axis) { return axis === 'horizontal' ? { x: point.x, y: center.y * 2 - point.y } : { x: center.x * 2 - point.x, y: point.y }; }
+function mirrorSelected(axis) {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  const center = objectCenter(object); pushHistory();
+  if (object.type === 'line' || object.type === 'dimension') { const a = mirrorPoint({ x: object.x1, y: object.y1 }, center, axis); const b = mirrorPoint({ x: object.x2, y: object.y2 }, center, axis); Object.assign(object, { x1: a.x, y1: a.y, x2: b.x, y2: b.y }); }
+  if (object.type === 'polyline') object.points = object.points.map(point => mirrorPoint(point, center, axis));
+  if (object.type === 'rect') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
+  if (object.type === 'semicircle') object.angle = axis === 'horizontal' ? -(object.angle || 0) : Math.PI - (object.angle || 0);
+  if (object.type === 'angleDimension') { object.startAngle = axis === 'horizontal' ? -object.startAngle : Math.PI - object.startAngle; object.endAngle = axis === 'horizontal' ? -object.endAngle : Math.PI - object.endAngle; }
+  if (object.type === 'text') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
+  syncLinkedDimensions(object);
+  render(); setStatus(`${axis === 'horizontal' ? 'Horizontal' : 'Vertikal'} gespiegelt`);
+}
+function createRectangularArray() {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  const countX = Math.max(1, Math.min(50, Math.round(operationNumber('arrayX', 2)))); const countY = Math.max(1, Math.min(50, Math.round(operationNumber('arrayY', 2))));
+  const dx = operationNumber('arrayDx'); const dy = operationNumber('arrayDy'); pushHistory();
+  for (let row = 0; row < countY; row++) for (let column = 0; column < countX; column++) if (row || column) { const copy = cloneObject(object); translateObject(copy, column * dx, row * dy); state.objects.push(copy); }
+  render(); setStatus(`${countX * countY} Objekte rechteckig angeordnet`);
+}
+function createCircularArray() {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  const count = Math.max(2, Math.min(100, Math.round(operationNumber('circleCount', 6)))); const total = operationNumber('circleAngle', 360) * Math.PI / 180;
+  const center = { x: operationNumber('circleCenterX'), y: operationNumber('circleCenterY') }; const divisor = Math.abs(Math.abs(total) - Math.PI * 2) < 0.0001 ? count : count - 1; pushHistory();
+  for (let index = 1; index < count; index++) { const copy = cloneObject(object); rotateObject(copy, total * index / divisor, center); state.objects.push(copy); }
+  render(); setStatus(`${count} Objekte kreisförmig angeordnet`);
+}
+function resizeSelectedLine(end, mode) {
+  const object = state.objects.find(item => item.id === selectedId && item.type === 'line'); if (!object) return;
+  const amount = Math.max(0, operationNumber('lineEditLength')); const length = distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 });
+  if (mode === 'trim' && amount >= length - 1) { setStatus('Trimmlänge ist zu groß'); return; }
+  const ux = (object.x2 - object.x1) / length; const uy = (object.y2 - object.y1) / length; const direction = mode === 'trim' ? 1 : -1; pushHistory();
+  if (end === 'start') { object.x1 += ux * amount * direction; object.y1 += uy * amount * direction; }
+  else { object.x2 -= ux * amount * direction; object.y2 -= uy * amount * direction; }
+  render(); setStatus(`Linie ${mode === 'trim' ? 'getrimmt' : 'verlängert'}`);
+}
+function splitSelectedLine() {
+  const object = state.objects.find(item => item.id === selectedId && item.type === 'line'); if (!object) return;
+  const length = distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }); const split = operationNumber('lineEditLength', length / 2);
+  if (split <= 0 || split >= length) { setStatus('Teilpunkt muss innerhalb der Linie liegen'); return; }
+  const ratio = split / length; const point = { x: object.x1 + (object.x2 - object.x1) * ratio, y: object.y1 + (object.y2 - object.y1) * ratio }; pushHistory();
+  const second = cloneObject(object); second.x1 = point.x; second.y1 = point.y; object.x2 = point.x; object.y2 = point.y; state.objects.push(second); render(); setStatus('Linie geteilt');
 }
 function scaleObject(object, factor) {
   if (object.type === 'line' || object.type === 'dimension') { object.x1 *= factor; object.y1 *= factor; object.x2 *= factor; object.y2 *= factor; }
@@ -864,12 +1062,12 @@ function setSelectedAsReference() {
   if (currentLength < 0.001) { setStatus('Richtmaß benötigt eine vorhandene Länge'); return; }
   pushHistory();
   const factor = targetLength / currentLength;
-  state.objects.forEach(item => scaleObject(item, factor));
-  // Modellmaße und Maßstab gemeinsam ändern, damit die Zeichnung sichtbar unverändert bleibt.
-  state.scale *= factor;
-  syncScaleControls();
+  const view = objectView(object);
+  state.objects.filter(item => objectView(item) === view).forEach(item => scaleObject(item, factor));
+  state.objects.filter(item => objectView(item) === view && item.type === 'rect').forEach(syncLinkedDimensions);
+  state.viewReferences[view] = { targetLength, factor, updatedAt: new Date().toISOString() };
   render();
-  setStatus(`Richtmaß gesetzt: ${formatLength(targetLength)}`);
+  setStatus(`Richtmaß ${viewNames[view]} gesetzt: ${formatLength(targetLength)}`);
 }
 function applySelectedChanges() {
   const object = state.objects.find(item => item.id === selectedId);
@@ -885,11 +1083,20 @@ function applySelectedChanges() {
   if (object.type === 'rect') { object.width = Math.max(1, object.width); object.height = Math.max(1, object.height); }
   if ((object.type === 'circle' || object.type === 'semicircle' || object.type === 'angleDimension') && (!Number.isFinite(object.r) || object.r < 1)) object.r = 1;
   if (object.strokeWidth < 0.25 || !Number.isFinite(object.strokeWidth)) object.strokeWidth = 0.75;
+  syncLinkedDimensions(object);
   state.activeView = objectView(object);
   if (!enabledViews().includes(state.activeView)) state.enabledViews = [...enabledViews(), state.activeView];
   syncViewControls();
   render();
   setStatus('Änderungen übernommen');
+}
+function syncLinkedDimensions(object) {
+  if (!object || object.type !== 'rect') return;
+  const [topLeft, topRight, bottomRight, bottomLeft] = rectCorners(object);
+  state.objects.filter(item => item.type === 'dimension' && item.sourceRectId === object.id).forEach(item => {
+    if (item.autoRectSide === 'width') { item.x1 = bottomLeft.x; item.y1 = bottomLeft.y; item.x2 = bottomRight.x; item.y2 = bottomRight.y; }
+    if (item.autoRectSide === 'height') { item.x1 = bottomRight.x; item.y1 = bottomRight.y; item.x2 = topRight.x; item.y2 = topRight.y; }
+  });
 }
 function deleteSelected() { if (!selectedId) return; pushHistory(); state.objects = state.objects.filter(object => object.id !== selectedId); selectedId = null; propertyPanel.innerHTML = '<div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div>'; document.querySelector('#selectionCount').textContent = 'Nichts ausgewählt'; render(); setStatus('Objekt gelöscht'); }
 function copySelected() { const object = state.objects.find(item => item.id === selectedId); if (!object) return; clipboard = JSON.parse(JSON.stringify(object)); setStatus('Kopiert – Strg+V zum Einfügen'); }
@@ -905,6 +1112,7 @@ function addSelectedToMaterialList() {
   } else {
     state.materials.push(materialRowFromObject(object));
   }
+  setDirty();
   renderMaterialList();
   render();
   setStatus('Objekt mit Materialliste verknüpft');
@@ -972,6 +1180,13 @@ function addAngleDimension() {
 }
 function pasteClipboard() { if (!clipboard) { setStatus('Nichts zum Einfügen'); return; } pushHistory(); const copy = JSON.parse(JSON.stringify(clipboard)); copy.id = newId(); const offset = 400; if (copy.type === 'line' || copy.type === 'dimension') { copy.x1 += offset; copy.y1 += offset; copy.x2 += offset; copy.y2 += offset; } else if (copy.type === 'rect' || copy.type === 'circle' || copy.type === 'semicircle') { copy.x += offset; copy.y += offset; } else if (copy.type === 'angleDimension') { copy.cx += offset; copy.cy += offset; } else if (copy.type === 'polyline') copy.points.forEach(p => { p.x += offset; p.y += offset; }); else if (copy.type === 'text') { copy.x += offset; copy.y += offset; } state.objects.push(copy); selectedId = copy.id; render(); setStatus('Objekt eingefügt'); }
 function handlePointerDown(event) {
+  if (event.button === 1 || (spacePressed && event.button === 0)) {
+    event.preventDefault();
+    panStart = { clientX: event.clientX, clientY: event.clientY, viewX: viewBox.x, viewY: viewBox.y };
+    canvas.setPointerCapture?.(event.pointerId);
+    canvas.classList.add('panning');
+    return;
+  }
   const point = eventPoint(event, state.tool === 'dimension');
   if (state.tool === 'select') {
     const hitObject = activeViewObjects().find(object => {
@@ -980,9 +1195,10 @@ function handlePointerDown(event) {
         return distanceToLine(point, object.x1, object.y1, object.x2, object.y2) <= hitThreshold;
       }
       if (object.type === 'rect') {
-        const px = Math.max(object.x, Math.min(point.x, object.x + object.width));
-        const py = Math.max(object.y, Math.min(point.y, object.y + object.height));
-        return distance(point, { x: px, y: py }) <= hitThreshold;
+        const local = rotatePoint(point, objectCenter(object), -(object.rotation || 0));
+        const px = Math.max(object.x, Math.min(local.x, object.x + object.width));
+        const py = Math.max(object.y, Math.min(local.y, object.y + object.height));
+        return distance(local, { x: px, y: py }) <= hitThreshold;
       }
       if (object.type === 'circle' || object.type === 'semicircle') {
         return Math.abs(distance(point, { x: object.x, y: object.y }) - object.r) <= hitThreshold;
@@ -1020,6 +1236,13 @@ function handlePointerDown(event) {
   pointerStart = point;
 }
 function handlePointerMove(event) {
+  if (panStart) {
+    const rect = canvas.getBoundingClientRect();
+    viewBox.x = panStart.viewX - (event.clientX - panStart.clientX) / rect.width * viewBox.width;
+    viewBox.y = panStart.viewY - (event.clientY - panStart.clientY) / rect.height * viewBox.height;
+    applyViewBox();
+    return;
+  }
   const point = eventPoint(event, !draggingObject && state.tool === 'dimension', pointerStart); document.querySelector('#cursorCoords').textContent = `X ${formatLength(point.x)}   Y ${formatLength(point.y)}`;
   if (draggingHandle) {
     moveHandle(point);
@@ -1039,14 +1262,7 @@ function handlePointerMove(event) {
       const lineLength = Math.hypot(lineDx, lineDy) || 1;
       const normal = { x: -lineDy / lineLength, y: lineDx / lineLength };
       draggingObject.offset = (Number.isFinite(Number(draggingObject.offset)) ? Number(draggingObject.offset) : dimensionStyle().defaultOffset) + (dx / state.scale) * normal.x + (dy / state.scale) * normal.y;
-    } else if (draggingObject.type === 'line' || draggingObject.type === 'dimension') {
-      draggingObject.x1 += dx; draggingObject.y1 += dy; draggingObject.x2 += dx; draggingObject.y2 += dy;
-    }
-    if (draggingObject.type === 'rect') { draggingObject.x += dx; draggingObject.y += dy; }
-    if (draggingObject.type === 'circle' || draggingObject.type === 'semicircle') { draggingObject.x += dx; draggingObject.y += dy; }
-    if (draggingObject.type === 'angleDimension') { draggingObject.cx += dx; draggingObject.cy += dy; }
-    if (draggingObject.type === 'polyline') draggingObject.points.forEach(p => { p.x += dx; p.y += dy; });
-    if (draggingObject.type === 'text') { draggingObject.x += dx; draggingObject.y += dy; }
+    } else translateObject(draggingObject, dx, dy);
     dragChanged = true;
     pointerStart = point;
     render();
@@ -1066,6 +1282,12 @@ function handlePointerMove(event) {
   if (state.tool === 'rect') { clearPreview(); const end = exactRectEndPoint(pointerStart, point); const x = Math.min(pointerStart.x, end.x); const y = Math.min(pointerStart.y, end.y); renderObject({ type: 'rect', x, y, width: Math.abs(end.x - pointerStart.x), height: Math.abs(end.y - pointerStart.y), style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
 }
 function handlePointerUp(event) {
+  if (panStart) {
+    canvas.releasePointerCapture?.(event.pointerId);
+    panStart = null;
+    canvas.classList.remove('panning');
+    return;
+  }
   if (draggingHandle) {
     canvas.releasePointerCapture?.(event.pointerId);
     draggingHandle = null;
@@ -1104,7 +1326,11 @@ function renderExportObject(object, layer, bounds, exportScale, offsetX = sheet.
   attrs['stroke-width'] = Math.max(0.6, Number(attrs['stroke-width']) || 0.75);
   let element;
   if (object.type === 'line') element = makeSvg('line', { ...attrs, x1: exportPoint(object.x1, bounds.minX, exportScale, offsetX), y1: exportPoint(object.y1, bounds.minY, exportScale, offsetY), x2: exportPoint(object.x2, bounds.minX, exportScale, offsetX), y2: exportPoint(object.y2, bounds.minY, exportScale, offsetY) });
-  if (object.type === 'rect') element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: exportPoint(object.x, bounds.minX, exportScale, offsetX), y: exportPoint(object.y, bounds.minY, exportScale, offsetY), width: object.width / exportScale, height: object.height / exportScale });
+  if (object.type === 'rect') {
+    const x = exportPoint(object.x, bounds.minX, exportScale, offsetX); const y = exportPoint(object.y, bounds.minY, exportScale, offsetY);
+    const width = object.width / exportScale; const height = object.height / exportScale;
+    element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x, y, width, height, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x + width / 2} ${y + height / 2})` });
+  }
   if (object.type === 'circle') element = makeSvg('circle', { ...attrs, cx: exportPoint(object.x, bounds.minX, exportScale, offsetX), cy: exportPoint(object.y, bounds.minY, exportScale, offsetY), r: object.r / exportScale });
   if (object.type === 'semicircle') element = makeSvg('path', { ...attrs, d: semicirclePath(object, exportScale, offsetX - bounds.minX / exportScale, offsetY - bounds.minY / exportScale) });
   if (object.type === 'polyline') element = makeSvg('polyline', { ...attrs, points: object.points.map(point => `${exportPoint(point.x, bounds.minX, exportScale, offsetX)},${exportPoint(point.y, bounds.minY, exportScale, offsetY)}`).join(' ') });
@@ -1141,7 +1367,7 @@ function renderExportObject(object, layer, bounds, exportScale, offsetX = sheet.
     const label = makeSvg('text', { x: (ax + bx) / 2, y: (ay + by) / 2 - 7, 'text-anchor': 'middle', class: 'dimension-label', 'font-size': style.textSize });
     label.textContent = dimensionLabelText(object, length); element.append(label);
   }
-  if (object.type === 'text') { element = makeSvg('text', { ...attrs, x: exportPoint(object.x, bounds.minX, exportScale, offsetX), y: exportPoint(object.y, bounds.minY, exportScale, offsetY), stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16 }); element.textContent = object.value; }
+  if (object.type === 'text') { const x = exportPoint(object.x, bounds.minX, exportScale, offsetX); const y = exportPoint(object.y, bounds.minY, exportScale, offsetY); element = makeSvg('text', { ...attrs, x, y, stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x} ${y})` }); element.textContent = object.value; }
   if (element) layer.append(element);
 }
 function renderExportMaterialMarkers(layer, bounds, exportScale, objects = state.objects.filter(object => object.visible !== false), offsetX = sheet.margin, offsetY = sheet.margin) {
@@ -1303,28 +1529,36 @@ async function exportPng() {
   setStatus('PNG exportiert');
 }
 function pdfEscape(value) { return String(value).replace(/[\\()]/g, '\\$&'); }
-function buildMaterialListSvgPage() {
+function buildMaterialListSvgPages(items = state.materials.slice(6)) {
   updateSheetFromState();
   const mm = sheetSizeMm();
-  const root = makeSvg('svg', { xmlns: svgNS, width: `${mm.w}mm`, height: `${mm.h}mm`, viewBox: `0 0 ${sheet.width} ${sheet.height}` });
-  const style = makeSvg('style', {});
-  style.textContent = ".title-block-label{font:700 8px Arial,sans-serif;fill:#667574}.title-block-value{font:600 13px Arial,sans-serif;fill:#263238}.sheet-text{font:500 10px Arial,sans-serif;fill:#566665}";
-  root.append(style);
-  root.append(makeSvg('rect', { width: sheet.width, height: sheet.height, fill: '#fffdf8' }));
-  root.append(makeSvg('rect', { x: 28, y: 28, width: sheet.width - 56, height: sheet.height - 56, fill: 'none', stroke: '#263238', 'stroke-width': 1.4 }));
-  addTableText(root, sheet.margin, sheet.margin + 10, `Materialliste / Stückliste - ${state.projectName}`, { 'font-size': 18, 'font-weight': 700, fill: '#263238' });
   const baseHeaders = [['Pos.', 48], ['Menge', 70], ['ME', 44], ['Benennung', 230], ['Werkstoff', 150], ['Abmessung', 150], ['Bemerkung', 307]];
   const fullWidth = sheet.width - sheet.margin * 2;
   const fullFactor = fullWidth / baseHeaders.reduce((sum, [, w]) => sum + w, 0);
   const headers = baseHeaders.map(([label, w]) => [label, w * fullFactor]);
-  const rowHeight = 24; let y = sheet.margin + 36; let x = sheet.margin;
-  headers.forEach(([label, w]) => { root.append(makeSvg('rect', { x, y, width: w, height: rowHeight, fill: 'none', stroke: '#263238', 'stroke-width': 0.8 })); addTableText(root, x + 4, y + 16, label, { 'font-weight': 700, 'font-size': 10 }); x += w; });
-  state.materials.forEach((item, index) => {
-    y += rowHeight; x = sheet.margin;
-    const values = materialExportValues(item, index);
-    headers.forEach(([, w], col) => { root.append(makeSvg('rect', { x, y, width: w, height: rowHeight, fill: 'none', stroke: '#263238', 'stroke-width': 0.55 })); addTableText(root, x + 4, y + 16, String(values[col] || '').slice(0, w > 150 ? 28 : 16), { 'font-size': 9 }); x += w; });
+  const rowHeight = 24;
+  const rowsPerPage = Math.max(1, Math.floor((sheet.height - sheet.margin * 2 - 82) / rowHeight));
+  const chunks = [];
+  for (let index = 0; index < items.length; index += rowsPerPage) chunks.push(items.slice(index, index + rowsPerPage));
+  return chunks.map((rows, pageIndex) => {
+    const root = makeSvg('svg', { xmlns: svgNS, width: `${mm.w}mm`, height: `${mm.h}mm`, viewBox: `0 0 ${sheet.width} ${sheet.height}` });
+    const style = makeSvg('style', {});
+    style.textContent = ".title-block-label{font:700 8px Arial,sans-serif;fill:#667574}.title-block-value{font:600 13px Arial,sans-serif;fill:#263238}.sheet-text{font:500 10px Arial,sans-serif;fill:#566665}";
+    root.append(style);
+    root.append(makeSvg('rect', { width: sheet.width, height: sheet.height, fill: '#fffdf8' }));
+    root.append(makeSvg('rect', { x: 28, y: 28, width: sheet.width - 56, height: sheet.height - 56, fill: 'none', stroke: '#263238', 'stroke-width': 1.4 }));
+    addTableText(root, sheet.margin, sheet.margin + 10, `Materialliste / Stückliste - ${state.projectName}`, { 'font-size': 18, 'font-weight': 700, fill: '#263238' });
+    addTableText(root, sheet.width - sheet.margin, sheet.margin + 10, `Seite ${pageIndex + 1} / ${chunks.length}`, { 'font-size': 10, 'text-anchor': 'end', fill: '#566665' });
+    let y = sheet.margin + 36; let x = sheet.margin;
+    headers.forEach(([label, width]) => { root.append(makeSvg('rect', { x, y, width, height: rowHeight, fill: 'none', stroke: '#263238', 'stroke-width': 0.8 })); addTableText(root, x + 4, y + 16, label, { 'font-weight': 700, 'font-size': 10 }); x += width; });
+    rows.forEach((item, rowIndex) => {
+      y += rowHeight; x = sheet.margin;
+      const absoluteIndex = 6 + pageIndex * rowsPerPage + rowIndex;
+      const values = materialExportValues(item, absoluteIndex);
+      headers.forEach(([, width], column) => { root.append(makeSvg('rect', { x, y, width, height: rowHeight, fill: 'none', stroke: '#263238', 'stroke-width': 0.55 })); addTableText(root, x + 4, y + 16, String(values[column] || '').slice(0, width > 150 ? 28 : 16), { 'font-size': 9 }); x += width; });
+    });
+    return new XMLSerializer().serializeToString(root);
   });
-  return new XMLSerializer().serializeToString(root);
 }
 function buildImagePdf(jpegDataUrls) {
   const mm = sheetSizeMm();
@@ -1357,7 +1591,7 @@ function buildImagePdf(jpegDataUrls) {
 async function exportPdf() {
   const pages = [buildSheetSvg()];
   updateMaterialsFromForm();
-  if (state.materials.length > 6) pages.push(buildMaterialListSvgPage());
+  if (state.materials.length > 6) pages.push(...buildMaterialListSvgPages());
   const canvases = [];
   for (const page of pages) canvases.push(await svgToCanvas(page, 2));
   const pdf = buildImagePdf(canvases.map(out => out.toDataURL('image/jpeg', 0.92)));
@@ -1370,7 +1604,7 @@ saveProject = function() {
   updateMaterialsFromForm();
   const data = {
     app: 'Werkplan',
-    version: 3,
+    version: 5,
     unit: 'mm',
     projectName: state.projectName,
     drawingNumber: state.drawingNumber,
@@ -1378,9 +1612,10 @@ saveProject = function() {
     projectDate: state.projectDate,
     materials: state.materials,
     objects: state.objects,
-    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView }
+    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView, viewReferences: state.viewReferences }
   };
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${fileBaseName()}.werkplan`);
+  setDirty(false);
   setStatus('Projekt gespeichert');
 };
 loadProject = function(file) {
@@ -1407,17 +1642,20 @@ loadProject = function(file) {
       state.sheetOrientation = data.settings?.sheetOrientation || 'landscape';
       state.enabledViews = Array.isArray(data.settings?.enabledViews) ? data.settings.enabledViews.filter(view => viewNames[view]) : ['front'];
       state.activeView = viewNames[data.settings?.activeView] ? data.settings.activeView : state.enabledViews[0];
+      state.viewReferences = data.settings?.viewReferences && typeof data.settings.viewReferences === 'object' ? data.settings.viewReferences : {};
       document.querySelector('#sheetFormat').value = state.sheetFormat;
       document.querySelector('#sheetOrientation').value = state.sheetOrientation;
       syncViewControls();
       state.dimensionStyle = data.settings?.dimensionStyle || state.dimensionStyle;
       syncDimensionStyleControls();
       state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 20;
+      setViewportZoom(Number(data.settings?.zoom) > 0 ? Number(data.settings.zoom) : 1);
       syncScaleControls();
       document.querySelector('#gridToggle').checked = state.grid;
       document.querySelector('#snapToggle').checked = state.snap;
       selectedId = null;
       render();
+      setDirty(false);
       setStatus('Projekt geladen');
     } catch {
       setStatus('Datei konnte nicht gelesen werden');
@@ -1427,24 +1665,24 @@ loadProject = function(file) {
 };
 
 document.querySelectorAll('.tool-button').forEach(button => button.addEventListener('click', () => setTool(button.dataset.tool)));
-document.querySelectorAll('.style-button').forEach(button => button.addEventListener('click', () => { state.style = button.dataset.style; document.querySelectorAll('.style-button').forEach(item => item.classList.toggle('active', item === button)); }));
-document.querySelector('#strokeWidth').addEventListener('input', event => { state.strokeWidth = Number(event.target.value); document.querySelector('#strokeOutput').textContent = `${state.strokeWidth.toFixed(2).replace('.', ',')} mm`; });
-document.querySelector('#strokeColor').addEventListener('input', event => state.strokeColor = event.target.value);
+document.querySelectorAll('.style-button').forEach(button => button.addEventListener('click', () => { state.style = button.dataset.style; setDirty(); document.querySelectorAll('.style-button').forEach(item => item.classList.toggle('active', item === button)); }));
+document.querySelector('#strokeWidth').addEventListener('input', event => { state.strokeWidth = Number(event.target.value); setDirty(); document.querySelector('#strokeOutput').textContent = `${state.strokeWidth.toFixed(2).replace('.', ',')} mm`; });
+document.querySelector('#strokeColor').addEventListener('input', event => { state.strokeColor = event.target.value; setDirty(); });
 ['#dimensionEndStyle', '#dimensionTextSize', '#dimensionDefaultOffset', '#dimensionUnit', '#dimensionDecimals'].forEach(selector => {
-  document.querySelector(selector)?.addEventListener('input', () => { updateDimensionStyleFromControls(); render(); });
+  document.querySelector(selector)?.addEventListener('input', () => { updateDimensionStyleFromControls(); setDirty(); render(); });
   document.querySelector(selector)?.addEventListener('change', () => { updateDimensionStyleFromControls(); render(); });
 });
 document.querySelector('#scaleSelect').addEventListener('change', event => { if (event.target.value === 'custom') { document.querySelector('#customScaleWrap').hidden = false; document.querySelector('#customScale').focus(); } else setScale(event.target.value); });
-document.querySelector('#scaleSelect').addEventListener('change', event => { if (event.target.value === 'auto') { state.autoScale = true; syncScaleControls(); render(); setStatus('Massstab automatisch berechnet'); } });
+document.querySelector('#scaleSelect').addEventListener('change', event => { if (event.target.value === 'auto') { state.autoScale = true; setDirty(); syncScaleControls(); render(); setStatus('Massstab automatisch berechnet'); } });
 document.querySelector('#customScale').addEventListener('change', event => setScale(event.target.value));
-document.querySelector('#sheetFormat')?.addEventListener('change', event => { state.sheetFormat = event.target.value; render(); setStatus('Blattformat geändert'); });
-document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; render(); setStatus('Blattausrichtung geändert'); });
-document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); render(); setStatus('Exportansichten geändert'); }));
-document.querySelector('#activeView')?.addEventListener('change', event => { state.activeView = event.target.value; if (!enabledViews().includes(state.activeView)) state.enabledViews = [...enabledViews(), state.activeView]; syncViewControls(); render(); setStatus(`${viewNames[state.activeView]} aktiv`); });
-document.querySelector('#gridToggle').addEventListener('change', event => { state.grid = event.target.checked; render(); });
-document.querySelector('#snapToggle').addEventListener('change', event => state.snap = event.target.checked);
-document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
-document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; document.querySelector('#projectName').value = state.projectName; syncViewControls(); renderMaterialList(); selectedId = null; render(); setStatus('Neue Zeichnung'); });
+document.querySelector('#sheetFormat')?.addEventListener('change', event => { state.sheetFormat = event.target.value; setDirty(); render(); setStatus('Blattformat geändert'); });
+document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; setDirty(); render(); setStatus('Blattausrichtung geändert'); });
+document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); setDirty(); render(); setStatus('Exportansichten geändert'); }));
+document.querySelectorAll('.view-button').forEach(button => button.addEventListener('click', () => setActiveView(button.dataset.view)));
+document.querySelector('#gridToggle').addEventListener('change', event => { state.grid = event.target.checked; setDirty(); render(); });
+document.querySelector('#snapToggle').addEventListener('change', event => { state.snap = event.target.checked; setDirty(); });
+document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); setDirty(); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
+document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; document.querySelector('#projectName').value = state.projectName; syncViewControls(); renderMaterialList(); selectedId = null; render(); setDirty(false); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
 document.querySelector('#undoAction')?.addEventListener('click', undo);
@@ -1454,17 +1692,22 @@ document.querySelector('#exportSvg').addEventListener('click', exportSvg);
 document.querySelector('#exportSheetSvg').addEventListener('click', exportSheetSvg);
 document.querySelector('#exportPng').addEventListener('click', exportPng);
 document.querySelector('#exportPdf').addEventListener('click', exportPdf);
-document.querySelector('#zoomIn').addEventListener('click', () => { state.zoom = Math.min(2, state.zoom + .1); canvas.style.transform = `scale(${state.zoom})`; render(); });
-document.querySelector('#zoomOut').addEventListener('click', () => { state.zoom = Math.max(.5, state.zoom - .1); canvas.style.transform = `scale(${state.zoom})`; render(); });
-document.querySelector('#fitView').addEventListener('click', () => { state.zoom = 1; canvas.style.transform = 'scale(1)'; render(); });
-canvas.addEventListener('pointerdown', handlePointerDown); canvas.addEventListener('pointermove', handlePointerMove); canvas.addEventListener('pointerup', handlePointerUp); canvas.addEventListener('pointerleave', () => { pointerStart = null; draggingHandle = null; updateLiveAngle(null, null); clearPreview(); });
-document.addEventListener('keydown', event => { if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); saveProject(); } const notEditing = document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'; if (event.ctrlKey && event.key.toLowerCase() === 'c' && notEditing) { event.preventDefault(); copySelected(); } if (event.ctrlKey && event.key.toLowerCase() === 'v' && notEditing) { event.preventDefault(); pasteClipboard(); } if (event.ctrlKey && event.key.toLowerCase() === 'z' && notEditing) { event.preventDefault(); undo(); } if (event.ctrlKey && event.key.toLowerCase() === 'y' && notEditing) { event.preventDefault(); redo(); } if (notEditing && event.key >= '1' && event.key <= '7') setTool(toolOrder[Number(event.key) - 1]); if (notEditing && event.key === 'Delete') deleteSelected(); if (event.key === 'Escape') { pointerStart = null; draggingHandle = null; polylinePoints = []; updateLiveAngle(null, null); clearPreview(); } });
+document.querySelector('#zoomIn').addEventListener('click', () => setViewportZoom(state.zoom * 1.2));
+document.querySelector('#zoomOut').addEventListener('click', () => setViewportZoom(state.zoom / 1.2));
+document.querySelector('#fitView').addEventListener('click', fitAllObjects);
+document.querySelector('#fitSelection').addEventListener('click', fitSelectedObject);
+canvas.addEventListener('wheel', event => { event.preventDefault(); setViewportZoom(state.zoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12), canvasScreenPoint(event)); }, { passive: false });
+canvas.addEventListener('pointerdown', handlePointerDown); canvas.addEventListener('pointermove', handlePointerMove); canvas.addEventListener('pointerup', handlePointerUp); canvas.addEventListener('pointerleave', () => { if (!panStart) { pointerStart = null; draggingHandle = null; updateLiveAngle(null, null); clearPreview(); } });
+document.addEventListener('keyup', event => { if (event.code === 'Space') { spacePressed = false; canvas.classList.remove('pan-ready'); } });
+document.addEventListener('keydown', event => { if (event.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') { event.preventDefault(); spacePressed = true; canvas.classList.add('pan-ready'); } if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); saveProject(); } const notEditing = document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'; if (event.ctrlKey && event.key.toLowerCase() === 'c' && notEditing) { event.preventDefault(); copySelected(); } if (event.ctrlKey && event.key.toLowerCase() === 'v' && notEditing) { event.preventDefault(); pasteClipboard(); } if (event.ctrlKey && event.key.toLowerCase() === 'z' && notEditing) { event.preventDefault(); undo(); } if (event.ctrlKey && event.key.toLowerCase() === 'y' && notEditing) { event.preventDefault(); redo(); } if (notEditing && event.key >= '1' && event.key <= '7') setTool(toolOrder[Number(event.key) - 1]); if (notEditing && event.key === 'Delete') deleteSelected(); if (event.key === 'Escape') { pointerStart = null; draggingHandle = null; panStart = null; canvas.classList.remove('panning'); polylinePoints = []; updateLiveAngle(null, null); clearPreview(); } });
 document.querySelector('#projectDate').value = state.projectDate;
 document.querySelector('#sheetFormat').value = state.sheetFormat;
 document.querySelector('#sheetOrientation').value = state.sheetOrientation;
+['#projectName', '#drawingNumber', '#drawnBy', '#projectDate'].forEach(selector => document.querySelector(selector)?.addEventListener('input', () => setDirty()));
 syncViewControls();
 syncDimensionStyleControls();
 renderMaterialList();
 syncScaleControls();
+applyViewBox();
 render();
 
