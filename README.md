@@ -10,7 +10,7 @@ Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vol
 
 ## Funktionsübersicht
 
-- Technische Grundformen, Polylinien, Texte und Bemaßungen
+- Technische Grundformen, Texte und Bemaßungen
 - Objektfang mit End-, Mittel-, Schnitt-, Quadrant- und Tangentialpunkten
 - Vier getrennte Arbeitsansichten mit eigenem Zoom und Maßstab
 - Objekt- und achsenbezogene Richtmaße ohne Veränderung der Geometrie
@@ -48,8 +48,6 @@ Klicken, Text eingeben, Enter zum Bestätigen.
 
 ### Weitere Formen
 
-- **Polylinie**: Punkte nacheinander anklicken, mit Doppelklick abschließen
-- **Ellipse / Ellipsenbogen**: Mittelpunkt anklicken und beide Radien durch Ziehen bestimmen
 - **Langloch**: Mittellinie ziehen; die Breite kann über das exakte Höhenfeld vorgegeben werden
 - **Polygon**: Mittelpunkt anklicken und Radius ziehen; die Seitenzahl wird links eingestellt
 - **Fase / Abrundung**: Rechteck auswählen und unter Eigenschaften Eckenart und Eckmaß einstellen
