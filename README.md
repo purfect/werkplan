@@ -106,18 +106,18 @@ Jede Ansicht speichert ihren eigenen Zoom, Bildausschnitt, Darstellungsmaßstab 
 
 1. Eine Linie, Bemaßung oder ein Rechteck auswählen.
 2. Bei einem Rechteck **Breite** oder **Höhe** als Bezugsachse wählen.
-3. Im Bereich **Richtmaß dieses Objekts** die gewünschte reale Länge eintragen, zum Beispiel `1800 mm`.
+3. Im Bereich **Richtmaß der aktuellen Ansicht** die gewünschte reale Länge eintragen, zum Beispiel `1800 mm`.
 4. **Übernehmen** klicken.
 
-Richtmaße werden pro Objekt gespeichert. Bei Rechtecken gilt das Verhältnis nur für die ausgewählte Achse:
+Ein Richtmaß kalibriert das Koordinatensystem der aktuellen Arbeitsansicht. Die bereits gezeichneten Formen werden dabei nicht verändert; alle Maßanzeigen und späteren exakten Eingaben derselben Ansicht verwenden jedoch gemeinsam das festgelegte Verhältnis:
 
-- Ein **Höhenrichtmaß** verändert ausschließlich die Höhenbemaßung.
-- Ein **Breitenrichtmaß** verändert ausschließlich die Breitenbemaßung.
-- Die andere Achse und alle anderen Objekte bleiben unverändert.
-- Verknüpfte automatische Bemaßungen übernehmen das Richtmaß ihres Quellobjekts.
-- Ohne Richtmaß zeigt eine automatische Bemaßung das exakte Objektmaß, beispielsweise `100 mm` als `10 cm`.
+- Eine bekannte gezeichnete Strecke wird auf den eingegebenen Realwert kalibriert.
+- Alle Bemaßungen der Ansicht verwenden danach denselben Faktor.
+- Exakte Längen, Rechteckbreiten und Rechteckhöhen werden automatisch in dieses Koordinatensystem zurückgerechnet.
+- Eigenschaften, Objektliste, Materialabmessungen und Mengenberechnung zeigen reale kalibrierte Maße.
+- Andere Arbeitsansichten besitzen weiterhin eine eigene Kalibrierung.
 
-Richtmaße verändern niemals Objektgeometrie, Position, Zoom oder Bildausschnitt. Über **Richtmaß dieses Objekts entfernen** wird wieder das unveränderte Objektmaß angezeigt.
+Objektform und gespeicherte Rohkoordinaten bleiben beim Setzen des Richtmaßes unverändert. Der Ansichtsmaßstab wird automatisch gegenläufig angepasst, sodass Bildausschnitt und sichtbare Objektgrößen beim Klick auf **Übernehmen** nicht springen. Neue exakte Eingaben und alle Bemaßungen verwenden danach das kalibrierte Koordinatensystem; ein 1,8-m-Objekt erscheint im Vergleich korrekt etwas kürzer als ein anschließend erzeugtes 2-m-Objekt. Über **Richtmaß dieser Ansicht entfernen** wird wieder das unkalibrierte Koordinatensystem verwendet, ebenfalls ohne sichtbaren Sprung.
 
 Für ein Objekt in einer anderen Arbeitsansicht zuerst oberhalb der Zeichenfläche auf **Front**, **Seite**, **Drauf** oder **Detail** wechseln und dort das betreffende Objekt auswählen.
 
@@ -157,14 +157,26 @@ Die Zahl im Abschnittskopf zeigt die Anzahl gefundener Probleme. Ein Klick auf e
 
 ## Speichern und Export
 
-Ein Stern vor dem Fenstertitel zeigt ungespeicherte Änderungen an. Mit `Strg + S` oder **Speichern** wird eine `.werkplan`-Datei erzeugt. Das aktuelle Dateiformat ist Version 9 und unterstützt Ebenen, Gruppen, neue Grundformen, getrennte Ansichtseinstellungen sowie objekt- und achsenbezogene Richtmaße.
+Ein Stern vor dem Fenstertitel zeigt ungespeicherte Änderungen an. Mit `Strg + S` oder **Speichern** wird eine `.werkplan`-Datei erzeugt. Das aktuelle Dateiformat ist Version 13 und unterstützt Ebenen, Gruppen, neue Grundformen, getrennte Ansichtseinstellungen, sprungfreie kalibrierte Koordinatensysteme sowie gespeicherte Exportmaßstäbe.
 
 Beim Export werden nicht druckbare Ebenen ausgelassen. Die ersten sechs Materialpositionen erscheinen auf dem Zeichnungsblatt; alle weiteren Positionen verteilt Werkplan automatisch auf zusätzliche PDF-Seiten.
+
+Sind mehrere Ansichten aktiviert, berechnet Werkplan den kleinsten gemeinsamen ganzzahligen Exportmaßstab, der für alle Ansichten in ihre jeweiligen Blattbereiche passt. Ein ungeeigneter manueller Arbeitsmaßstab beeinflusst den Export nicht mehr. Die druckbaren Inhalte erhalten einen adaptiven Rand und werden in ihrem Bereich zentriert. Jede Ansicht wird zusätzlich auf ihren Blattbereich begrenzt, sodass Geometrie und Bemaßung nicht über den Blattrahmen oder in das Schriftfeld laufen.
+
+### Exportmaßstab selbst festlegen
+
+Unter **Maßstab & Richtmaß → Exportmaßstab** stehen folgende Möglichkeiten zur Verfügung:
+
+- **Automatisch einpassen**: Werkplan berechnet den kleinsten gemeinsamen Maßstab, bei dem alle aktivierten Ansichten vollständig passen.
+- Voreinstellungen `1:1`, `1:2`, `1:5`, `1:10`, `1:20`, `1:50` und `1:100`.
+- **Benutzerdefiniert**: Ein beliebiger Nenner wie `1:7,5` kann eingegeben werden.
+
+Der Exportmaßstab gilt gemeinsam für alle aktivierten Ansichten, damit Größen direkt vergleichbar bleiben. Ist ein manuell gewählter Maßstab zu groß für den verfügbaren Blattbereich, zeigt die Projektprüfung den mindestens benötigten Wert an. Der gewählte Wert wird trotzdem verwendet; die Ansichtsgrenzen schützen Blattrahmen und Schriftfeld vor Überläufen.
 
 ## Objektinspektor und Kontextmenü
 
 In der Objektliste kann nach Name oder Typ sowie nach Ansicht und Ebene gefiltert werden. Objekte lassen sich dort sichtbar oder unsichtbar schalten, sperren, auswählen und anhand ihrer Material- oder Bemaßungsverknüpfungen prüfen. Objektname, Ebene und Sperre sind direkt in den Eigenschaften editierbar.
 
-Ein Rechtsklick auf ein Objekt öffnet Befehle für Kopieren, 90-Grad-Drehung, Spiegelung, Schnellbemaßung, Materialzuordnung und Löschen. Unter **Kopie einfügen in** kann die aktuelle Einzel- oder Mehrfachauswahl direkt in die Frontansicht, Seitenansicht, Draufsicht oder Detailansicht kopiert werden. Bei unterschiedlichen Ansichtsmaßstäben rechnet Werkplan die Modellkoordinaten automatisch um, sodass Position und sichtbare Größe auf der Arbeitsfläche erhalten bleiben. Ebene und objektbezogenes Richtmaß werden übernommen; automatisch verknüpfte Bemaßungen werden mitkopiert. Die Zielansicht wird danach automatisch geöffnet.
+Ein Rechtsklick auf ein Objekt öffnet Befehle für Kopieren, 90-Grad-Drehung, Spiegelung, Schnellbemaßung, Materialzuordnung und Löschen. Unter **Kopie einfügen in** kann die aktuelle Einzel- oder Mehrfachauswahl direkt in die Frontansicht, Seitenansicht, Draufsicht oder Detailansicht kopiert werden. Werkplan übernimmt dabei den Darstellungsmaßstab der Quellansicht und rechnet die Modellkoordinaten auf die Kalibrierung der Zielansicht um. Dadurch bleiben reale Maße, Position und sichtbare Größe gleichzeitig erhalten. Ebene und verknüpfte Bemaßungen werden mitkopiert. Die Zielansicht wird danach automatisch geöffnet.
 
 Die verwendeten Schriften liegen als WOFF2-Dateien im Ordner `fonts`. Werkplan benötigt deshalb auch für die Typografie keine Internetverbindung. Die zugehörigen OFL-Lizenztexte befinden sich im selben Ordner.
