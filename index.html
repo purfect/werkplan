@@ -34,6 +34,13 @@
         <button class="tool-button" data-tool="rect"><span class="tool-icon">[]</span><span>Rechteck</span><kbd>5</kbd></button>
         <button class="tool-button" data-tool="dimension"><span class="tool-icon">&harr;</span><span>Bema&szlig;ung</span><kbd>6</kbd></button>
         <button class="tool-button" data-tool="text"><span class="tool-icon">T</span><span>Text</span><kbd>7</kbd></button>
+        <button class="tool-button" data-tool="polyline"><span class="tool-icon">⌁</span><span>Polylinie</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="ellipse"><span class="tool-icon">O</span><span>Ellipse</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="ellipseArc"><span class="tool-icon">C</span><span>Ellipsenbogen</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="slot"><span class="tool-icon">▭</span><span>Langloch</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="polygon"><span class="tool-icon">⬡</span><span>Polygon</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="smartTrim"><span class="tool-icon">⌫</span><span>Trimmen</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="smartExtend"><span class="tool-icon">↦</span><span>Verlängern</span><kbd></kbd></button>
       </div>
 
       <div class="section-divider"></div>
@@ -68,6 +75,8 @@
           <span>mm</span>
         </div>
         <div class="scale-note">Leer = frei zeichnen</div>
+        <label class="field-label" for="polygonSides">Polygonseiten</label>
+        <input id="polygonSides" class="text-input" type="number" min="3" max="24" step="1" value="6">
       </div>
 
       <div class="section-divider"></div>
@@ -129,12 +138,24 @@
 
     <aside class="sidebar right-panel">
       <details class="accordion-section" open>
+        <summary class="panel-heading"><span>Ebenen</span><span id="activeLayerName" class="muted">Kontur</span></summary>
+        <label class="field-label" for="activeLayer">Aktive Ebene</label>
+        <select id="activeLayer" class="text-input"></select>
+        <div id="layerList" class="layer-list"></div>
+      </details>
+      <details class="accordion-section" open>
         <summary class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></summary>
         <div id="propertyPanel" class="property-panel"><div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div></div>
       </details>
 
       <details class="accordion-section">
         <summary class="panel-heading"><span>Objektliste</span></summary>
+        <div class="inspector-filters">
+          <input id="objectSearch" class="text-input" placeholder="Name oder Typ filtern">
+          <select id="objectTypeFilter" class="text-input"><option value="">Alle Typen</option></select>
+          <select id="objectViewFilter" class="text-input"><option value="">Alle Ansichten</option><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select>
+          <select id="objectLayerFilter" class="text-input"><option value="">Alle Ebenen</option></select>
+        </div>
         <div id="objectList" class="object-list"></div>
       </details>
 
@@ -162,6 +183,8 @@
         <label class="check-row"><input class="view-toggle" type="checkbox" value="top"> Draufsicht</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="detail"> Detail</label>
         <div id="viewReferenceStatus" class="scale-note">Frontansicht: kein Richtmaß gesetzt</div>
+        <label class="field-label">Blattposition der aktiven Ansicht</label>
+        <div class="reference-row"><input id="viewExportX" type="number" step="1" placeholder="X automatisch"><input id="viewExportY" type="number" step="1" placeholder="Y automatisch"><span>px</span></div>
         <label class="field-label" for="scaleSelect">Darstellung</label>
         <div class="scale-row"><select id="scaleSelect" class="scale-select"><option value="auto" selected>Automatisch</option><option value="1">1:1</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select></div>
         <div id="customScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customScale">Eigener Ma&szlig;stab 1 :</label><input id="customScale" class="text-input" type="number" min="1" step="1" value="20"></div>
@@ -170,6 +193,15 @@
       </details>
     </aside>
   </main>
+  <div id="contextMenu" class="context-menu" hidden>
+    <button type="button" data-action="copy">Kopieren</button>
+    <button type="button" data-action="rotate">90° drehen</button>
+    <button type="button" data-action="mirrorH">Horizontal spiegeln</button>
+    <button type="button" data-action="mirrorV">Vertikal spiegeln</button>
+    <button type="button" data-action="dimension">Bemaßen</button>
+    <button type="button" data-action="material">Material zuordnen</button>
+    <button type="button" data-action="delete" class="danger">Löschen</button>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

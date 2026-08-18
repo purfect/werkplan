@@ -24,9 +24,20 @@ state.sheetOrientation = 'landscape';
 state.enabledViews = ['front'];
 state.activeView = 'front';
 state.viewReferences = {};
+state.layers = [
+  { id: 'contour', name: 'Kontur', visible: true, locked: false, printable: true },
+  { id: 'axis', name: 'Achsen', visible: true, locked: false, printable: true },
+  { id: 'dimension', name: 'Bemaßung', visible: true, locked: false, printable: true },
+  { id: 'text', name: 'Text', visible: true, locked: false, printable: true },
+  { id: 'guide', name: 'Hilfslinien', visible: true, locked: false, printable: false }
+];
+state.activeLayer = 'contour';
+state.viewSettings = {};
 let pointerStart = null;
 let selectedId = null;
+let selectedIds = new Set();
 let draggingObject = null;
+let draggingObjects = [];
 let draggingHandle = null;
 let dragMode = 'move';
 let dragChanged = false;
@@ -38,15 +49,34 @@ let angleReferenceId = null;
 let viewBox = { x: 0, y: 0, width: 1200, height: 760 };
 let panStart = null;
 let spacePressed = false;
+let selectionBoxStart = null;
 
 const svgNS = 'http://www.w3.org/2000/svg';
 const snapSize = 10;
 const sheet = { width: 1200, height: 760, margin: 50, titleHeight: 118 };
 const scaleSteps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
-const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text' };
+const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text', polyline: 'Polylinie', ellipse: 'Ellipse', ellipseArc: 'Ellipsenbogen', slot: 'Langloch', polygon: 'Polygon', smartTrim: 'Bis Schnittkante trimmen', smartExtend: 'Bis Schnittkante verlängern' };
 const toolOrder = ['select', 'line', 'circle', 'semicircle', 'rect', 'dimension', 'text'];
 const viewNames = { front: 'Frontansicht', side: 'Seitenansicht', top: 'Draufsicht', detail: 'Detail' };
 const viewOrder = ['front', 'side', 'top', 'detail'];
+function ensureViewSetting(view = state.activeView) {
+  if (!state.viewSettings[view]) state.viewSettings[view] = { scale: 20, autoScale: true, viewBox: { x: 0, y: 0, width: 1200, height: 760 }, layerVisibility: {}, exportX: null, exportY: null };
+  return state.viewSettings[view];
+}
+function saveActiveViewSettings() {
+  const setting = ensureViewSetting(); setting.scale = state.scale; setting.autoScale = state.autoScale; setting.viewBox = { ...viewBox };
+  setting.layerVisibility = Object.fromEntries(state.layers.map(layer => [layer.id, layer.visible !== false]));
+}
+function loadActiveViewSettings() {
+  const setting = ensureViewSetting(); state.scale = Number(setting.scale) > 0 ? Number(setting.scale) : 20; state.autoScale = setting.autoScale !== false; viewBox = { ...(setting.viewBox || { x: 0, y: 0, width: 1200, height: 760 }) };
+  state.layers.forEach(layer => { layer.visible = setting.layerVisibility?.[layer.id] ?? true; });
+  applyViewBox(); syncScaleControls(); renderLayerControls(); syncViewSettingControls();
+}
+function syncViewSettingControls() {
+  const setting = ensureViewSetting(); const x = document.querySelector('#viewExportX'); const y = document.querySelector('#viewExportY');
+  if (x) x.value = Number.isFinite(setting.exportX) ? setting.exportX : '';
+  if (y) y.value = Number.isFinite(setting.exportY) ? setting.exportY : '';
+}
 function updateSheetFromState() {
   const landscape = state.sheetOrientation !== 'portrait';
   if (state.sheetFormat === 'A4') { sheet.width = landscape ? 900 : 640; sheet.height = landscape ? 640 : 900; }
@@ -85,6 +115,22 @@ function semicirclePath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
   const end = polarPoint(center, radius, (object.angle || 0) + Math.PI);
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 1 ${end.x} ${end.y}`;
 }
+function ellipseArcPath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+  const cx = object.x / scale + offsetX; const cy = object.y / scale + offsetY;
+  const rx = object.rx / scale; const ry = object.ry / scale;
+  return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx + rx} ${cy}`;
+}
+function slotPath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+  const x1 = object.x1 / scale + offsetX; const y1 = object.y1 / scale + offsetY; const x2 = object.x2 / scale + offsetX; const y2 = object.y2 / scale + offsetY;
+  const radius = object.width / scale / 2; const angle = Math.atan2(y2 - y1, x2 - x1); const nx = -Math.sin(angle) * radius; const ny = Math.cos(angle) * radius;
+  return `M ${x1 + nx} ${y1 + ny} L ${x2 + nx} ${y2 + ny} A ${radius} ${radius} 0 0 1 ${x2 - nx} ${y2 - ny} L ${x1 - nx} ${y1 - ny} A ${radius} ${radius} 0 0 1 ${x1 + nx} ${y1 + ny} Z`;
+}
+function rectShapePath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+  const x = object.x / scale + offsetX; const y = object.y / scale + offsetY; const width = object.width / scale; const height = object.height / scale;
+  const size = Math.min(Number(object.cornerSize) || 0, object.width / 2, object.height / 2) / scale;
+  if (object.cornerMode === 'chamfer' && size > 0) return `M ${x + size} ${y} H ${x + width - size} L ${x + width} ${y + size} V ${y + height - size} L ${x + width - size} ${y + height} H ${x + size} L ${x} ${y + height - size} V ${y + size} Z`;
+  return null;
+}
 function distanceToLine(point, x1, y1, x2, y2) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -108,8 +154,8 @@ function addSnapCandidate(candidates, point, x1, y1, x2, y2) {
   const snapped = closestPointOnSegment(point, x1, y1, x2, y2);
   candidates.push({ point: snapped, distance: distance(point, snapped), type: 'Kante' });
 }
-function addPointCandidate(candidates, rawPoint, snapPointValue, type) {
-  candidates.push({ point: snapPointValue, distance: distance(rawPoint, snapPointValue), type });
+function addPointCandidate(candidates, rawPoint, snapPointValue, type, guide = null) {
+  candidates.push({ point: snapPointValue, distance: distance(rawPoint, snapPointValue), type, guide });
 }
 function rectCorners(object) {
   const center = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
@@ -121,15 +167,16 @@ function rectCorners(object) {
 function lineSegments() {
   const segments = [];
   activeViewObjects().forEach(object => {
-    if (object.type === 'line') segments.push({ x1: object.x1, y1: object.y1, x2: object.x2, y2: object.y2 });
+    if (object.type === 'line') segments.push({ x1: object.x1, y1: object.y1, x2: object.x2, y2: object.y2, objectId: object.id });
     if (object.type === 'rect') {
       const corners = rectCorners(object);
-      corners.forEach((point, index) => { const next = corners[(index + 1) % corners.length]; segments.push({ x1: point.x, y1: point.y, x2: next.x, y2: next.y }); });
+      corners.forEach((point, index) => { const next = corners[(index + 1) % corners.length]; segments.push({ x1: point.x, y1: point.y, x2: next.x, y2: next.y, objectId: object.id }); });
     }
     if (object.type === 'polyline') object.points.slice(1).forEach((pointB, index) => {
       const pointA = object.points[index];
-      segments.push({ x1: pointA.x, y1: pointA.y, x2: pointB.x, y2: pointB.y });
+      segments.push({ x1: pointA.x, y1: pointA.y, x2: pointB.x, y2: pointB.y, objectId: object.id });
     });
+    if (object.type === 'polygon') object.points.forEach((pointA, index) => { const pointB = object.points[(index + 1) % object.points.length]; segments.push({ x1: pointA.x, y1: pointA.y, x2: pointB.x, y2: pointB.y, objectId: object.id }); });
   });
   return segments;
 }
@@ -143,6 +190,23 @@ function segmentIntersection(a, b) {
   if (t < 0 || t > 1 || u < 0 || u > 1) return null;
   return { x: a.x1 + t * dax, y: a.y1 + t * day };
 }
+function infiniteLineSegmentIntersection(line, segment) {
+  const dax = line.x2 - line.x1; const day = line.y2 - line.y1; const dbx = segment.x2 - segment.x1; const dby = segment.y2 - segment.y1;
+  const denominator = dax * dby - day * dbx; if (Math.abs(denominator) < 0.001) return null;
+  const t = ((segment.x1 - line.x1) * dby - (segment.y1 - line.y1) * dbx) / denominator;
+  const u = ((segment.x1 - line.x1) * day - (segment.y1 - line.y1) * dax) / denominator;
+  return u >= 0 && u <= 1 ? { x: line.x1 + t * dax, y: line.y1 + t * day, t } : null;
+}
+function smartEditLineAt(point, mode) {
+  const threshold = Math.max(12, state.scale * 12);
+  const line = activeViewObjects().filter(object => object.type === 'line' && !isObjectLocked(object)).sort((a, b) => distanceToLine(point, a.x1, a.y1, a.x2, a.y2) - distanceToLine(point, b.x1, b.y1, b.x2, b.y2))[0];
+  if (!line || distanceToLine(point, line.x1, line.y1, line.x2, line.y2) > threshold) { setStatus('Linie nahe dem gewünschten Ende anklicken'); return; }
+  const editStart = distance(point, { x: line.x1, y: line.y1 }) < distance(point, { x: line.x2, y: line.y2 });
+  const candidates = lineSegments().filter(segment => segment.objectId !== line.id).map(segment => infiniteLineSegmentIntersection(line, segment)).filter(Boolean).filter(hit => mode === 'trim' ? hit.t > 0.001 && hit.t < 0.999 : editStart ? hit.t < -0.001 : hit.t > 1.001);
+  candidates.sort((a, b) => editStart ? Math.abs(a.t) - Math.abs(b.t) : Math.abs(a.t - 1) - Math.abs(b.t - 1));
+  const hit = candidates[0]; if (!hit) { setStatus('Keine passende Schnittkante gefunden'); return; }
+  pushHistory(); if (editStart) { line.x1 = hit.x; line.y1 = hit.y; } else { line.x2 = hit.x; line.y2 = hit.y; } selectObject(line.id); render(); setStatus(mode === 'trim' ? 'Linie bis Schnittkante getrimmt' : 'Linie bis Schnittkante verlängert');
+}
 function objectSnapResult(point, origin = null) {
   const candidates = [];
   const segments = lineSegments();
@@ -151,6 +215,21 @@ function objectSnapResult(point, origin = null) {
     addPointCandidate(candidates, point, { x: segment.x2, y: segment.y2 }, 'Endpunkt');
     addPointCandidate(candidates, point, { x: (segment.x1 + segment.x2) / 2, y: (segment.y1 + segment.y2) / 2 }, 'Mittelpunkt');
     addSnapCandidate(candidates, point, segment.x1, segment.y1, segment.x2, segment.y2);
+    const dx = segment.x2 - segment.x1; const dy = segment.y2 - segment.y1; const segmentLength = Math.hypot(dx, dy) || 1;
+    const ux = dx / segmentLength; const uy = dy / segmentLength;
+    const infiniteT = (point.x - segment.x1) * ux + (point.y - segment.y1) * uy;
+    if (infiniteT < 0 || infiniteT > segmentLength) {
+      const extension = { x: segment.x1 + ux * infiniteT, y: segment.y1 + uy * infiniteT };
+      addPointCandidate(candidates, point, extension, 'Verlängerung', { x1: segment.x1, y1: segment.y1, x2: extension.x, y2: extension.y });
+    }
+    if (origin) {
+      const parallelT = (point.x - origin.x) * ux + (point.y - origin.y) * uy;
+      const parallel = { x: origin.x + ux * parallelT, y: origin.y + uy * parallelT };
+      addPointCandidate(candidates, point, parallel, 'Parallel', { x1: origin.x, y1: origin.y, x2: parallel.x, y2: parallel.y });
+      const px = -uy; const py = ux; const perpendicularT = (point.x - origin.x) * px + (point.y - origin.y) * py;
+      const perpendicular = { x: origin.x + px * perpendicularT, y: origin.y + py * perpendicularT };
+      addPointCandidate(candidates, point, perpendicular, 'Senkrecht', { x1: origin.x, y1: origin.y, x2: perpendicular.x, y2: perpendicular.y });
+    }
     if (origin) {
       const foot = closestPointOnSegment(origin, segment.x1, segment.y1, segment.x2, segment.y2);
       const atStart = distance(foot, { x: segment.x1, y: segment.y1 }) < 0.001;
@@ -174,8 +253,21 @@ function objectSnapResult(point, origin = null) {
       if (intersection) addPointCandidate(candidates, point, intersection, 'Schnittpunkt');
     }
   }
+  activeViewObjects().forEach(object => {
+    if (object.type === 'circle' || object.type === 'semicircle') {
+      [{ x: object.x + object.r, y: object.y }, { x: object.x - object.r, y: object.y }, { x: object.x, y: object.y + object.r }, { x: object.x, y: object.y - object.r }].forEach(quadrant => addPointCandidate(candidates, point, quadrant, 'Quadrant'));
+      if (origin) {
+        const centerDistance = distance(origin, { x: object.x, y: object.y });
+        if (centerDistance > object.r + 0.001) {
+          const base = Math.atan2(origin.y - object.y, origin.x - object.x); const offset = Math.acos(object.r / centerDistance);
+          [base + offset, base - offset].forEach(angle => { const tangent = polarPoint(object, object.r, angle); addPointCandidate(candidates, point, tangent, 'Tangente', { x1: origin.x, y1: origin.y, x2: tangent.x, y2: tangent.y }); });
+        }
+      }
+    }
+    if (object.type === 'ellipse' || object.type === 'ellipseArc') [{ x: object.x + object.rx, y: object.y }, { x: object.x - object.rx, y: object.y }, { x: object.x, y: object.y + object.ry }, { x: object.x, y: object.y - object.ry }].forEach(quadrant => addPointCandidate(candidates, point, quadrant, 'Quadrant'));
+  });
   const threshold = Math.max(150, state.scale * 12);
-  const priority = { Endpunkt: 0, Schnittpunkt: 1, Mittelpunkt: 2, Lotpunkt: 3, Kante: 4 };
+  const priority = { Endpunkt: 0, Schnittpunkt: 1, Quadrant: 2, Tangente: 3, Mittelpunkt: 4, Lotpunkt: 5, Senkrecht: 6, Parallel: 7, Verlängerung: 8, Kante: 9 };
   const best = candidates.sort((a, b) => a.distance - b.distance || (priority[a.type] ?? 9) - (priority[b.type] ?? 9))[0];
   return best && best.distance <= threshold ? best : { point, type: null, distance: 0 };
 }
@@ -196,6 +288,7 @@ function eventPoint(event, objectSnap = false, snapOrigin = null) {
   currentSnap = snapped;
   return snapped.point;
 }
+function toolUsesObjectSnap() { return ['line', 'dimension', 'polyline', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(state.tool); }
 function constrainedEndPoint(start, current) {
   const len = Number(document.querySelector('#targetLength')?.value);
   if (!len || len <= 0) return current;
@@ -255,9 +348,13 @@ function formatDimensionLength(value, options = {}) {
   const displayValue = unit === 'm' ? value / 1000 : unit === 'cm' ? value / 10 : value;
   return `${displayValue.toFixed(decimals).replace('.', ',')} ${unit}`;
 }
+function calibratedLength(value, view = state.activeView) {
+  const factor = Number(state.viewReferences[view]?.factor);
+  return value * (Number.isFinite(factor) && factor > 0 ? factor : 1);
+}
 function dimensionLabelText(object, measuredLength) {
   if (object.labelOverride) return String(object.labelOverride);
-  return `${object.labelPrefix || ''}${formatDimensionLength(measuredLength, { unit: object.dimensionUnit, decimals: object.dimensionDecimals })}`;
+  return `${object.labelPrefix || ''}${formatDimensionLength(calibratedLength(measuredLength, objectView(object)), { unit: object.dimensionUnit, decimals: object.dimensionDecimals })}`;
 }
 function updateDimensionStyleFromControls() {
   const style = dimensionStyle();
@@ -283,7 +380,7 @@ function updateProjectMetaFromForm() {
   state.projectDate = document.querySelector('#projectDate')?.value || new Date().toISOString().slice(0, 10);
 }
 function objectListLabel(object, index = state.objects.indexOf(object)) {
-  return `${index + 1}. ${toolNames[object.type] || object.type} - ${objectSummary(object)} - ${viewNames[objectView(object)]}`;
+  return `${index + 1}. ${object.name || toolNames[object.type] || object.type} - ${objectSummary(object)} - ${viewNames[objectView(object)]}`;
 }
 function linkedObjectText(item) {
   const object = state.objects.find(entry => entry.id === item.objectId);
@@ -428,8 +525,10 @@ function objectBounds(object) {
     return { minX: Math.min(...corners.map(point => point.x)), minY: Math.min(...corners.map(point => point.y)), maxX: Math.max(...corners.map(point => point.x)), maxY: Math.max(...corners.map(point => point.y)) };
   }
   if (object.type === 'circle' || object.type === 'semicircle') return { minX: object.x - object.r, minY: object.y - object.r, maxX: object.x + object.r, maxY: object.y + object.r };
+  if (object.type === 'ellipse' || object.type === 'ellipseArc') { const angle = object.rotation || 0; const extentX = Math.sqrt(object.rx ** 2 * Math.cos(angle) ** 2 + object.ry ** 2 * Math.sin(angle) ** 2); const extentY = Math.sqrt(object.rx ** 2 * Math.sin(angle) ** 2 + object.ry ** 2 * Math.cos(angle) ** 2); return { minX: object.x - extentX, minY: object.y - extentY, maxX: object.x + extentX, maxY: object.y + extentY }; }
+  if (object.type === 'slot') { const radius = object.width / 2; return { minX: Math.min(object.x1, object.x2) - radius, minY: Math.min(object.y1, object.y2) - radius, maxX: Math.max(object.x1, object.x2) + radius, maxY: Math.max(object.y1, object.y2) + radius }; }
   if (object.type === 'angleDimension') return { minX: object.cx - object.r, minY: object.cy - object.r, maxX: object.cx + object.r, maxY: object.cy + object.r };
-  if (object.type === 'polyline') {
+  if (object.type === 'polyline' || object.type === 'polygon') {
     const xs = object.points.map(point => point.x);
     const ys = object.points.map(point => point.y);
     return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
@@ -460,12 +559,42 @@ function boundsForObjects(objects, padding = 0) {
 function objectView(object) {
   return viewNames[object.view] ? object.view : 'front';
 }
+function defaultLayerForType(type) {
+  if (type === 'dimension' || type === 'angleDimension') return 'dimension';
+  if (type === 'text') return 'text';
+  return 'contour';
+}
+function objectLayer(object) { return state.layers.some(layer => layer.id === object.layer) ? object.layer : defaultLayerForType(object.type); }
+function layerForObject(object) { return state.layers.find(layer => layer.id === objectLayer(object)) || state.layers[0]; }
+function isObjectVisible(object) { return object.visible !== false && layerForObject(object).visible !== false; }
+function isObjectLocked(object) { return object.locked === true || layerForObject(object).locked === true; }
+function isObjectPrintable(object) {
+  const layer = layerForObject(object); const setting = ensureViewSetting(objectView(object));
+  const visibleInView = setting.layerVisibility?.[layer.id] ?? layer.visible !== false;
+  return object.visible !== false && visibleInView && layer.printable !== false;
+}
+function renderLayerControls() {
+  const select = document.querySelector('#activeLayer'); const list = document.querySelector('#layerList');
+  if (!select || !list) return;
+  select.innerHTML = state.layers.map(layer => `<option value="${escapeHtml(layer.id)}">${escapeHtml(layer.name)}</option>`).join('');
+  if (!state.layers.some(layer => layer.id === state.activeLayer)) state.activeLayer = state.layers[0].id;
+  select.value = state.activeLayer;
+  document.querySelector('#activeLayerName').textContent = state.layers.find(layer => layer.id === state.activeLayer)?.name || '';
+  list.replaceChildren();
+  state.layers.forEach(layer => {
+    const row = document.createElement('div'); row.className = `layer-row${layer.id === state.activeLayer ? ' active' : ''}`;
+    row.innerHTML = `<button type="button" data-action="activate" title="Ebene aktivieren">${escapeHtml(layer.name)}</button><label title="Sichtbar"><input type="checkbox" data-action="visible" ${layer.visible !== false ? 'checked' : ''}>S</label><label title="Gesperrt"><input type="checkbox" data-action="locked" ${layer.locked ? 'checked' : ''}>G</label><label title="Druckbar"><input type="checkbox" data-action="printable" ${layer.printable !== false ? 'checked' : ''}>D</label>`;
+    row.querySelector('[data-action="activate"]').addEventListener('click', () => { state.activeLayer = layer.id; setDirty(); renderLayerControls(); });
+    row.querySelectorAll('input').forEach(input => input.addEventListener('change', () => { layer[input.dataset.action] = input.checked; if (input.dataset.action === 'visible') ensureViewSetting().layerVisibility[layer.id] = input.checked; setDirty(); render(); renderLayerControls(); }));
+    list.append(row);
+  });
+}
 function enabledViews() {
   const views = Array.isArray(state.enabledViews) ? state.enabledViews.filter(view => viewNames[view]) : [];
   return views.length ? views : ['front'];
 }
 function activeViewObjects() {
-  return state.objects.filter(object => object.visible !== false && objectView(object) === state.activeView);
+  return state.objects.filter(object => isObjectVisible(object) && objectView(object) === state.activeView);
 }
 function syncViewControls() {
   const enabled = enabledViews();
@@ -486,16 +615,18 @@ function updateViewsFromControls() {
 }
 function setActiveView(view) {
   if (!viewNames[view]) return;
+  saveActiveViewSettings();
   state.activeView = view;
   if (!enabledViews().includes(view)) state.enabledViews = [...enabledViews(), view];
-  selectedId = null;
+  selectedId = null; selectedIds.clear();
+  loadActiveViewSettings();
   syncViewControls();
   render();
   setDirty();
   setStatus(`${viewNames[view]} aktiv`);
 }
 function exportViewGroups() {
-  const visible = state.objects.filter(object => object.visible !== false);
+  const visible = state.objects.filter(isObjectPrintable);
   const grouped = new Map();
   visible.forEach(object => {
     const view = objectView(object);
@@ -519,7 +650,7 @@ function calculateRequiredExportScale(bounds, usableWidth = sheet.width - sheet.
 function calculateAutoScale() {
   updateSheetFromState();
   updateMaterialsFromForm();
-  const bounds = drawingBounds(500);
+  const bounds = boundsForObjects(activeViewObjects(), 500);
   if (!bounds) return state.scale || 20;
   const required = calculateRequiredExportScale(bounds);
   return scaleSteps.find(step => step >= required) || Math.ceil(required / 1000) * 1000;
@@ -555,6 +686,7 @@ function setScale(value) {
   if (!Number.isFinite(nextScale) || nextScale < 1) return;
   state.autoScale = false;
   state.scale = Math.round(nextScale);
+  ensureViewSetting().scale = state.scale; ensureViewSetting().autoScale = false;
   setDirty();
   syncScaleControls();
   render();
@@ -591,11 +723,16 @@ function renderObject(object, layer = drawingLayer) {
   if (object.type === 'line') element = makeSvg('line', { ...attrs, x1: canvasValue(object.x1), y1: canvasValue(object.y1), x2: canvasValue(object.x2), y2: canvasValue(object.y2) });
   if (object.type === 'rect') {
     const centerX = canvasValue(object.x + object.width / 2); const centerY = canvasValue(object.y + object.height / 2);
-    element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: canvasValue(object.x), y: canvasValue(object.y), width: canvasValue(object.width), height: canvasValue(object.height), transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${centerX} ${centerY})` });
+    const path = rectShapePath(object);
+    element = path ? makeSvg('path', { ...attrs, ...rectFillAttrs(object), d: path, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${centerX} ${centerY})` }) : makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x: canvasValue(object.x), y: canvasValue(object.y), width: canvasValue(object.width), height: canvasValue(object.height), rx: object.cornerMode === 'round' ? canvasValue(object.cornerSize || 0) : 0, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${centerX} ${centerY})` });
   }
   if (object.type === 'circle') element = makeSvg('circle', { ...attrs, cx: canvasValue(object.x), cy: canvasValue(object.y), r: canvasValue(object.r) });
   if (object.type === 'semicircle') element = makeSvg('path', { ...attrs, d: semicirclePath(object) });
   if (object.type === 'polyline') element = makeSvg('polyline', { ...attrs, points: object.points.map(point => `${canvasValue(point.x)},${canvasValue(point.y)}`).join(' ') });
+  if (object.type === 'polygon') element = makeSvg('polygon', { ...attrs, points: object.points.map(point => `${canvasValue(point.x)},${canvasValue(point.y)}`).join(' ') });
+  if (object.type === 'ellipse') { const cx = canvasValue(object.x); const cy = canvasValue(object.y); element = makeSvg('ellipse', { ...attrs, cx, cy, rx: canvasValue(object.rx), ry: canvasValue(object.ry), transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${cx} ${cy})` }); }
+  if (object.type === 'ellipseArc') { const cx = canvasValue(object.x); const cy = canvasValue(object.y); element = makeSvg('path', { ...attrs, d: ellipseArcPath(object), transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${cx} ${cy})` }); }
+  if (object.type === 'slot') element = makeSvg('path', { ...attrs, d: slotPath(object) });
   if (object.type === 'angleDimension') {
     const style = dimensionStyle();
     const radius = Math.max(1, object.r || 500);
@@ -628,8 +765,9 @@ function renderObject(object, layer = drawingLayer) {
   if (object.type === 'text') { const x = canvasValue(object.x); const y = canvasValue(object.y); element = makeSvg('text', { ...attrs, x, y, stroke: 'none', fill: object.stroke || state.strokeColor, 'font-size': 16, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x} ${y})` }); element.textContent = object.value; }
   if (!element) return null;
   element.dataset.id = object.id;
-  if (object.id === selectedId) element.classList.add('selected-shape');
-  element.addEventListener('pointerdown', event => { if (state.tool === 'select' && layer === drawingLayer) { event.preventDefault(); event.stopPropagation(); canvas.setPointerCapture?.(event.pointerId); startDraggingObject(object, eventPoint(event)); } });
+  if (selectedIds.has(object.id) || object.id === selectedId) element.classList.add('selected-shape');
+  element.addEventListener('pointerdown', event => { if (state.tool === 'select' && layer === drawingLayer && !isObjectLocked(object)) { event.preventDefault(); event.stopPropagation(); canvas.setPointerCapture?.(event.pointerId); startDraggingObject(object, eventPoint(event), event.shiftKey); } });
+  element.addEventListener('contextmenu', event => { if (layer === drawingLayer && state.tool === 'select') { event.preventDefault(); selectObject(object.id); showContextMenu(event.clientX, event.clientY); } });
   layer.append(element);
   return element;
 }
@@ -643,7 +781,8 @@ function render() {
   document.querySelector('#zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
   updateScaleUi();
   canvas.classList.toggle('select-mode', state.tool === 'select');
-  if (selectedId) { const selected = state.objects.find(object => object.id === selectedId); if (selected) showProperties(selected); }
+  if (selectedIds.size > 1) showMultiSelectionProperties();
+  else if (selectedId) { const selected = state.objects.find(object => object.id === selectedId); if (selected) showProperties(selected); }
   renderHandles();
   renderObjectList();
   updateHistoryControls();
@@ -664,7 +803,7 @@ function renderMaterialMarkers() {
 }
 function newId() { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 function snapshotObjects() { return JSON.stringify(state.objects); }
-function restoreObjects(snapshot) { state.objects = JSON.parse(snapshot); selectedId = null; render(); }
+function restoreObjects(snapshot) { state.objects = JSON.parse(snapshot); selectedId = null; selectedIds.clear(); render(); }
 function setDirty(dirty = true) {
   state.dirty = dirty;
   document.title = `${dirty ? '* ' : ''}${documentTitle}`;
@@ -678,22 +817,28 @@ function updateHistoryControls() {
 function pushHistory() { state.history.push(snapshotObjects()); state.redo = []; if (state.history.length > 30) state.history.shift(); setDirty(); }
 function undo() { if (!state.history.length) { setStatus('Nichts zum Rückgängig machen'); return; } state.redo.push(snapshotObjects()); restoreObjects(state.history.pop()); setDirty(); setStatus('Rückgängig'); }
 function redo() { if (!state.redo.length) { setStatus('Nichts zum Wiederholen'); return; } state.history.push(snapshotObjects()); restoreObjects(state.redo.pop()); setDirty(); setStatus('Wiederholt'); }
-function addObject(object) { pushHistory(); state.objects.push({ ...object, id: newId(), view: object.view || state.activeView, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }); selectedId = null; render(); setStatus('Objekt hinzugefügt'); }
-function selectObject(id) {
-  selectedId = id;
+function addObject(object) { pushHistory(); state.objects.push({ ...object, id: newId(), view: object.view || state.activeView, layer: object.layer || state.activeLayer || defaultLayerForType(object.type), style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }); selectedId = null; selectedIds.clear(); render(); setStatus('Objekt hinzugefügt'); }
+function selectedObjects() { return state.objects.filter(object => selectedIds.has(object.id)); }
+function selectObject(id, additive = false) {
+  if (additive && selectedIds.has(id)) selectedIds.delete(id);
+  else { if (!additive) selectedIds.clear(); selectedIds.add(id); }
+  selectedId = selectedIds.has(id) ? id : [...selectedIds].at(-1) || null;
   const object = state.objects.find(item => item.id === id);
   if (object) {
+    if (state.activeView !== objectView(object)) saveActiveViewSettings();
     state.activeView = objectView(object);
+    loadActiveViewSettings();
     if (!enabledViews().includes(state.activeView)) state.enabledViews = [...enabledViews(), state.activeView];
     syncViewControls();
   }
   render();
-  if (object) setStatus(`${toolNames[object.type] || 'Objekt'} ausgewählt`);
+  if (object) setStatus(selectedIds.size > 1 ? `${selectedIds.size} Objekte ausgewählt` : `${toolNames[object.type] || 'Objekt'} ausgewählt`);
 }
 function setStatus(message) { statusText.textContent = message; }
 function applyViewBox() {
   canvas.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
   state.zoom = 1200 / viewBox.width;
+  if (state.viewSettings) ensureViewSetting().viewBox = { ...viewBox };
   document.querySelector('#zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
 }
 function canvasScreenPoint(event) {
@@ -749,6 +894,9 @@ function objectSummary(object) {
   if (object.type === 'angleDimension') return angleDimensionLabel(object);
   if (object.type === 'rect') return `${formatLength(object.width)} x ${formatLength(object.height)}`;
   if (object.type === 'circle' || object.type === 'semicircle') return `R ${formatLength(object.r)}`;
+  if (object.type === 'ellipse' || object.type === 'ellipseArc') return `${formatLength(object.rx * 2)} x ${formatLength(object.ry * 2)}`;
+  if (object.type === 'slot') return `${formatLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) + object.width)} x ${formatLength(object.width)}`;
+  if (object.type === 'polygon') return `${object.points.length}-Eck`;
   if (object.type === 'text') return object.value || 'Text';
   return 'Objekt';
 }
@@ -763,13 +911,18 @@ function renderObjectList() {
     list.append(empty);
     return;
   }
+  const search = (document.querySelector('#objectSearch')?.value || '').toLowerCase(); const typeFilter = document.querySelector('#objectTypeFilter')?.value || ''; const viewFilter = document.querySelector('#objectViewFilter')?.value || ''; const layerFilter = document.querySelector('#objectLayerFilter')?.value || '';
   state.objects.forEach((object, index) => {
+    const searchable = `${object.name || ''} ${toolNames[object.type] || object.type}`.toLowerCase();
+    if ((search && !searchable.includes(search)) || (typeFilter && object.type !== typeFilter) || (viewFilter && objectView(object) !== viewFilter) || (layerFilter && objectLayer(object) !== layerFilter)) return;
     const row = document.createElement('div');
     const linked = state.materials.filter(item => item.objectId === object.id);
-    const materialSuffix = linked.length ? ` | Material: ${linked.map(item => `${item.name || 'Teil'} x${item.objectQty || 1}`).join(', ')}` : '';
+    const dimensions = state.objects.filter(item => item.type === 'dimension' && item.sourceRectId === object.id).length;
+    const materialSuffix = `${dimensions ? ` | ${dimensions} Maß(e)` : ''}${linked.length ? ` | Material: ${linked.map(item => `${item.name || 'Teil'} x${item.objectQty || 1}`).join(', ')}` : ''}`;
     row.className = `object-row${object.id === selectedId ? ' active' : ''}`;
-    row.innerHTML = `<button type="button" title="Sichtbarkeit">${object.visible === false ? '○' : '●'}</button><span>${escapeHtml(objectListLabel(object, index) + materialSuffix)}</span><button type="button" title="Auswählen">›</button>`;
+    row.innerHTML = `<button type="button" title="Sichtbarkeit">${object.visible === false ? '○' : '●'}</button><button type="button" title="Sperre">${isObjectLocked(object) ? '■' : '□'}</button><span title="${escapeHtml(materialSuffix || 'Keine Verknüpfungen')}">${escapeHtml(objectListLabel(object, index) + materialSuffix)}</span><button type="button" title="Auswählen">›</button>`;
     row.querySelector('button:first-child').addEventListener('click', event => { event.stopPropagation(); pushHistory(); object.visible = object.visible === false; render(); });
+    row.querySelector('button:nth-child(2)').addEventListener('click', event => { event.stopPropagation(); pushHistory(); object.locked = !object.locked; render(); });
     row.querySelector('button:last-child').addEventListener('click', event => { event.stopPropagation(); selectObject(object.id); });
     row.addEventListener('click', () => selectObject(object.id));
     list.append(row);
@@ -857,6 +1010,7 @@ function drawSnapMarker() {
   const x = canvasValue(currentSnap.point.x);
   const y = canvasValue(currentSnap.point.y);
   const group = makeSvg('g', { class: 'snap-marker' });
+  if (currentSnap.guide) group.append(makeSvg('line', { x1: canvasValue(currentSnap.guide.x1), y1: canvasValue(currentSnap.guide.y1), x2: canvasValue(currentSnap.guide.x2), y2: canvasValue(currentSnap.guide.y2), class: 'snap-guide' }));
   group.append(
     makeSvg('circle', { cx: x, cy: y, r: 7, fill: 'none', stroke: '#f0a52d', 'stroke-width': 1.8, 'vector-effect': 'non-scaling-stroke' }),
     makeSvg('line', { x1: x - 10, y1: y, x2: x + 10, y2: y, stroke: '#f0a52d', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' }),
@@ -888,9 +1042,12 @@ function exactRectEndPoint(start, current) {
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return current;
   return { x: start.x + width * (current.x < start.x ? -1 : 1), y: start.y + height * (current.y < start.y ? -1 : 1) };
 }
-function startDraggingObject(object, point) {
+function startDraggingObject(object, point, additive = false) {
+  if (additive || !selectedIds.has(object.id)) selectObject(object.id, additive);
+  if (object.groupId && !additive) state.objects.filter(item => item.groupId === object.groupId).forEach(item => selectedIds.add(item.id));
   selectedId = object.id;
   draggingObject = object;
+  draggingObjects = selectedObjects().filter(item => !isObjectLocked(item));
   dragMode = object.type === 'dimension' ? 'dimensionOffset' : 'move';
   pointerStart = point;
   dragChanged = false;
@@ -906,29 +1063,35 @@ function geometryFields(object) {
   if (object.type === 'line' || object.type === 'dimension') return `<label>X1 ${unitInput('x1', object.x1)}</label><label>Y1 ${unitInput('y1', object.y1)}</label><label>X2 ${unitInput('x2', object.x2)}</label><label>Y2 ${unitInput('y2', object.y2)}</label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand ${unitInput('offset', Number.isFinite(Number(object.offset)) ? object.offset : dimensionStyle().defaultOffset, 'px')}</label><label>Einheit<select name="dimensionUnit"><option value="">Global</option><option value="auto">Auto</option><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label><label>Nachkommastellen<input name="dimensionDecimals" type="number" min="0" max="3" step="1" value="${object.dimensionDecimals ?? ''}" placeholder="${dimensionStyle().decimals}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
   if (object.type === 'circle') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label class="wide-field">Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label>`;
   if (object.type === 'semicircle') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label>Winkel ${unitInput('angleDeg', Math.round(((object.angle || 0) * 180 / Math.PI + 360) % 360), '°')}</label>`;
+  if (object.type === 'ellipse' || object.type === 'ellipseArc') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label>Radius X ${unitInput('rx', object.rx, 'mm', 'min="1"')}</label><label>Radius Y ${unitInput('ry', object.ry, 'mm', 'min="1"')}</label>`;
+  if (object.type === 'slot') return `<label>X1 ${unitInput('x1', object.x1)}</label><label>Y1 ${unitInput('y1', object.y1)}</label><label>X2 ${unitInput('x2', object.x2)}</label><label>Y2 ${unitInput('y2', object.y2)}</label><label class="wide-field">Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label>`;
   if (object.type === 'angleDimension') return `<label>X Mitte ${unitInput('cx', object.cx)}</label><label>Y Mitte ${unitInput('cy', object.cy)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label class="wide-field">Winkeltext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>`;
-  if (object.type === 'rect') return `<label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label><label>Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', object.height, 'mm', 'min="1"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none" ${!object.fillMode || object.fillMode === 'none' ? 'selected' : ''}>Keine</option><option value="solid" ${object.fillMode === 'solid' ? 'selected' : ''}>Vollfarbe schwarz</option><option value="hatch" ${object.fillMode === 'hatch' ? 'selected' : ''}>Schraffur</option><option value="crosshatch" ${object.fillMode === 'crosshatch' ? 'selected' : ''}>Kreuzschraffur</option></select></label>`;
+  if (object.type === 'rect') return `<label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label><label>Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', object.height, 'mm', 'min="1"')}</label><label>Ecken<select name="cornerMode"><option value="square">Rechtwinklig</option><option value="chamfer">Fase</option><option value="round">Abrundung</option></select></label><label>Eckmaß ${unitInput('cornerSize', object.cornerSize || 0, 'mm', 'min="0"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none" ${!object.fillMode || object.fillMode === 'none' ? 'selected' : ''}>Keine</option><option value="solid" ${object.fillMode === 'solid' ? 'selected' : ''}>Vollfarbe schwarz</option><option value="hatch" ${object.fillMode === 'hatch' ? 'selected' : ''}>Schraffur</option><option value="crosshatch" ${object.fillMode === 'crosshatch' ? 'selected' : ''}>Kreuzschraffur</option></select></label>`;
   if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label>`;
   return '<div class="property-note">Dieses Objekt hat derzeit keine zusätzlichen Eigenschaften.</div>';
 }
 function showProperties(object) {
   document.querySelector('#selectionCount').textContent = '1 ausgewählt';
   const measuredLength = object.type === 'line' || object.type === 'dimension' ? distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) : 0;
-  const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(measuredLength) : object.type === 'rect' ? `${formatLength(object.width)} x ${formatLength(object.height)}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(object.r)}` : 'Mehrpunkt';
+  const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(measuredLength) : object.type === 'rect' ? `${formatLength(object.width)} x ${formatLength(object.height)}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(object.r)}` : objectSummary(object);
   const rectHasAutoDimensions = object.type === 'rect' && state.objects.some(item => item.type === 'dimension' && item.sourceRectId === object.id);
   const referenceViewName = viewNames[objectView(object)];
-  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Diese Linie kalibriert nur die Objekte der ${referenceViewName}. Andere Ansichten bleiben unverändert.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(measuredLength || 1800)}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Breite oder Höhe kalibriert nur die Objekte der ${referenceViewName}. Andere Ansichten bleiben unverändert.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(object.height || 1800)}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
+  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Diese Linie kalibriert nur die angezeigten Bemaßungswerte der ${referenceViewName}. Geometrie und Ansicht bleiben unverändert.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(measuredLength || 1800, objectView(object)))}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Breite oder Höhe kalibriert nur die angezeigten Bemaßungswerte der ${referenceViewName}. Geometrie und Ansicht bleiben unverändert.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(object.height || 1800, objectView(object)))}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
   const rectControls = '';
   const circleControls = object.type === 'circle' || object.type === 'semicircle' ? `<button id="addRadiusDimension" class="copy-button">Radius bemaßen</button><button id="addDiameterDimension" class="copy-button">Durchmesser bemaßen</button>` : '';
   const angleControls = object.type === 'line' ? `<button id="rememberAngleLine" class="copy-button">Linie 1 merken</button><button id="addAngleDimension" class="copy-button">Winkel zu Linie 1</button>` : '';
   const transformControls = `<details class="operation-box" open><summary>Transformieren &amp; duplizieren</summary><div class="operation-grid"><label>Δ X ${unitInput('moveX', 0)}</label><label>Δ Y ${unitInput('moveY', 0)}</label><button id="moveExact" type="button">Verschieben</button><button id="duplicateExact" type="button">Duplizieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 0, '°')}</label><button id="rotateExact" type="button">Drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button></div><div class="operation-subheading">Rechteckige Wiederholung</div><div class="operation-grid"><label>Anzahl X<input name="arrayX" type="number" min="1" max="50" value="2"></label><label>Anzahl Y<input name="arrayY" type="number" min="1" max="50" value="2"></label><label>Abstand X ${unitInput('arrayDx', 500)}</label><label>Abstand Y ${unitInput('arrayDy', 500)}</label><button id="rectArray" class="wide-field" type="button">Wiederholen</button></div><div class="operation-subheading">Kreisförmige Wiederholung</div><div class="operation-grid"><label>Anzahl<input name="circleCount" type="number" min="2" max="100" value="6"></label><label>Gesamtwinkel ${unitInput('circleAngle', 360, '°')}</label><label>Zentrum X ${unitInput('circleCenterX', 0)}</label><label>Zentrum Y ${unitInput('circleCenterY', 0)}</label><button id="circleArray" class="wide-field" type="button">Wiederholen</button></div></details>`;
   const lineEditControls = object.type === 'line' ? `<details class="operation-box" open><summary>Linie bearbeiten</summary><div class="operation-grid"><label class="wide-field">Länge ${unitInput('lineEditLength', Math.round(measuredLength / 2), 'mm', 'min="1"')}</label><button id="trimStart" type="button">Anfang trimmen</button><button id="trimEnd" type="button">Ende trimmen</button><button id="extendStart" type="button">Anfang verlängern</button><button id="extendEnd" type="button">Ende verlängern</button><button id="splitLine" class="wide-field" type="button">Bei Länge teilen</button></div></details>` : '';
-  propertyPanel.innerHTML = `<div class="property-form"><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label><label class="wide-field">Ansicht<select name="view"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}${transformControls}${lineEditControls}<button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
+  const layerOptions = state.layers.map(layer => `<option value="${escapeHtml(layer.id)}">${escapeHtml(layer.name)}</option>`).join('');
+  propertyPanel.innerHTML = `<div class="property-form"><label class="wide-field">Objektname<input name="name" value="${escapeHtml(object.name || '')}" placeholder="${toolNames[object.type] || object.type}"></label><label>Typ<input value="${toolNames[object.type] || object.type}" readonly></label><label>Abmessung<input value="${dimension}" readonly></label>${geometryFields(object)}<label>Linienstärke<input name="strokeWidth" type="number" min="0.25" max="2.5" step="0.25" value="${object.strokeWidth}"></label><label>Stil<select name="style"><option value="solid" ${object.style === 'solid' ? 'selected' : ''}>Volllinie</option><option value="dashed" ${object.style === 'dashed' ? 'selected' : ''}>Strichlinie</option><option value="center" ${object.style === 'center' ? 'selected' : ''}>Achse</option></select></label><label>Farbe<input name="stroke" type="color" value="${object.stroke || state.strokeColor}"></label><label>Ebene<select name="layer">${layerOptions}</select></label><label>Gesperrt<select name="locked"><option value="false">Nein</option><option value="true">Ja</option></select></label><label class="wide-field">Ansicht<select name="view"><option value="front">Frontansicht</option><option value="side">Seitenansicht</option><option value="top">Draufsicht</option><option value="detail">Detail</option></select></label></div>${referenceControl}${rectControls}${circleControls}${angleControls}${transformControls}${lineEditControls}<button id="addObjectMaterial" class="copy-button">Als Materialposition übernehmen</button><button id="copyObject" class="copy-button">Kopieren</button><button id="deleteSelected" class="delete-button">Auswahl löschen</button>`;
   propertyPanel.querySelector('.property-form').addEventListener('change', applySelectedChanges);
   document.querySelector('[name="view"]').value = objectView(object);
+  document.querySelector('[name="layer"]').value = objectLayer(object);
+  document.querySelector('[name="locked"]').value = String(object.locked === true);
+  if (object.type === 'rect') document.querySelector('[name="cornerMode"]').value = object.cornerMode || 'square';
   if (object.type === 'dimension' && document.querySelector('[name="dimensionUnit"]')) document.querySelector('[name="dimensionUnit"]').value = object.dimensionUnit || '';
   document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
-  document.querySelector('#referenceRectSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(event.target.value === 'width' ? object.width : object.height); });
+  document.querySelector('#referenceRectSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(calibratedLength(event.target.value === 'width' ? object.width : object.height, objectView(object))); });
   document.querySelector('#addRectDimensions')?.addEventListener('click', addRectDimensions);
   document.querySelector('#addRadiusDimension')?.addEventListener('click', addRadiusDimension);
   document.querySelector('#addDiameterDimension')?.addEventListener('click', addDiameterDimension);
@@ -950,6 +1113,27 @@ function showProperties(object) {
   document.querySelector('#copyObject').addEventListener('click', copySelected);
   document.querySelector('#deleteSelected').addEventListener('click', deleteSelected);
 }
+function showMultiSelectionProperties() {
+  const objects = selectedObjects();
+  document.querySelector('#selectionCount').textContent = `${objects.length} ausgewählt`;
+  const grouped = objects.every(object => object.groupId && object.groupId === objects[0].groupId);
+  propertyPanel.innerHTML = `<div class="property-note">${objects.length} Objekte ausgewählt.</div><div class="operation-grid multi-actions"><button id="groupSelection" type="button">Gruppieren</button><button id="ungroupSelection" type="button">Gruppierung aufheben</button><button id="copyObject" type="button">Kopieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 90, '°')}</label><button id="rotateExact" type="button">Gemeinsam drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button><button id="deleteSelected" type="button">Auswahl löschen</button></div>${grouped ? `<div class="property-note">Gemeinsame Gruppe</div>` : ''}`;
+  document.querySelector('#groupSelection').addEventListener('click', groupSelection);
+  document.querySelector('#ungroupSelection').addEventListener('click', ungroupSelection);
+  document.querySelector('#copyObject').addEventListener('click', copySelected);
+  document.querySelector('#rotateExact').addEventListener('click', rotateSelectedExact);
+  document.querySelector('#mirrorHorizontal').addEventListener('click', () => mirrorSelected('horizontal'));
+  document.querySelector('#mirrorVertical').addEventListener('click', () => mirrorSelected('vertical'));
+  document.querySelector('#deleteSelected').addEventListener('click', deleteSelected);
+}
+function groupSelection() {
+  const objects = selectedObjects(); if (objects.length < 2) return;
+  pushHistory(); const groupId = `gruppe-${newId()}`; objects.forEach(object => { object.groupId = groupId; }); render(); setStatus(`${objects.length} Objekte gruppiert`);
+}
+function ungroupSelection() {
+  const objects = selectedObjects(); if (!objects.length) return;
+  pushHistory(); objects.forEach(object => { delete object.groupId; }); render(); setStatus('Gruppierung aufgehoben');
+}
 function operationNumber(name, fallback = 0) {
   const value = Number(propertyPanel.querySelector(`[name="${name}"]`)?.value);
   return Number.isFinite(value) ? value : fallback;
@@ -964,9 +1148,10 @@ function objectCenter(object) {
 }
 function translateObject(object, dx, dy) {
   if (object.type === 'line' || object.type === 'dimension') { object.x1 += dx; object.y1 += dy; object.x2 += dx; object.y2 += dy; }
-  if (object.type === 'rect' || object.type === 'circle' || object.type === 'semicircle' || object.type === 'text') { object.x += dx; object.y += dy; }
+  if (object.type === 'rect' || object.type === 'circle' || object.type === 'semicircle' || object.type === 'ellipse' || object.type === 'ellipseArc' || object.type === 'text') { object.x += dx; object.y += dy; }
+  if (object.type === 'slot') { object.x1 += dx; object.y1 += dy; object.x2 += dx; object.y2 += dy; }
   if (object.type === 'angleDimension') { object.cx += dx; object.cy += dy; }
-  if (object.type === 'polyline') object.points.forEach(point => { point.x += dx; point.y += dy; });
+  if (object.type === 'polyline' || object.type === 'polygon') object.points.forEach(point => { point.x += dx; point.y += dy; });
   syncLinkedDimensions(object);
 }
 function rotateObject(object, angle, center = objectCenter(object)) {
@@ -981,10 +1166,11 @@ function rotateObject(object, angle, center = objectCenter(object)) {
     object.rotation = (object.rotation || 0) + angle;
   }
   if (object.type === 'semicircle') object.angle = (object.angle || 0) + angle;
-  if (object.type === 'polyline') object.points = object.points.map(point => rotatePoint(point, center, angle));
+  if (object.type === 'polyline' || object.type === 'polygon') object.points = object.points.map(point => rotatePoint(point, center, angle));
+  if (object.type === 'slot') { const a = rotatePoint({ x: object.x1, y: object.y1 }, center, angle); const b = rotatePoint({ x: object.x2, y: object.y2 }, center, angle); Object.assign(object, { x1: a.x, y1: a.y, x2: b.x, y2: b.y }); }
   if (object.type === 'angleDimension') { const point = rotatePoint({ x: object.cx, y: object.cy }, center, angle); object.cx = point.x; object.cy = point.y; object.startAngle += angle; object.endAngle += angle; }
   if (object.type === 'text') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; object.rotation = (object.rotation || 0) + angle; }
-  if (object.type === 'circle') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; }
+  if (object.type === 'circle' || object.type === 'ellipse' || object.type === 'ellipseArc') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; object.rotation = (object.rotation || 0) + angle; }
   if (object.type === 'semicircle') { const point = rotatePoint({ x: object.x, y: object.y }, center, angle); object.x = point.x; object.y = point.y; }
   syncLinkedDimensions(object);
 }
@@ -998,21 +1184,27 @@ function duplicateSelectedExact() {
   pushHistory(); const copy = cloneObject(object); translateObject(copy, operationNumber('moveX'), operationNumber('moveY')); state.objects.push(copy); selectedId = copy.id; render(); setStatus('Exaktes Duplikat erstellt');
 }
 function rotateSelectedExact() {
-  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
-  pushHistory(); rotateObject(object, operationNumber('rotateAngle') * Math.PI / 180); render(); setStatus('Objekt gedreht');
+  const objects = selectedObjects(); if (!objects.length) return;
+  const bounds = boundsForObjects(objects); const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+  pushHistory(); const angle = operationNumber('rotateAngle') * Math.PI / 180; objects.forEach(object => rotateObject(object, angle, center)); render(); setStatus(`${objects.length} Objekt(e) gedreht`);
 }
 function mirrorPoint(point, center, axis) { return axis === 'horizontal' ? { x: point.x, y: center.y * 2 - point.y } : { x: center.x * 2 - point.x, y: point.y }; }
 function mirrorSelected(axis) {
-  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
-  const center = objectCenter(object); pushHistory();
-  if (object.type === 'line' || object.type === 'dimension') { const a = mirrorPoint({ x: object.x1, y: object.y1 }, center, axis); const b = mirrorPoint({ x: object.x2, y: object.y2 }, center, axis); Object.assign(object, { x1: a.x, y1: a.y, x2: b.x, y2: b.y }); }
-  if (object.type === 'polyline') object.points = object.points.map(point => mirrorPoint(point, center, axis));
-  if (object.type === 'rect') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
-  if (object.type === 'semicircle') object.angle = axis === 'horizontal' ? -(object.angle || 0) : Math.PI - (object.angle || 0);
-  if (object.type === 'angleDimension') { object.startAngle = axis === 'horizontal' ? -object.startAngle : Math.PI - object.startAngle; object.endAngle = axis === 'horizontal' ? -object.endAngle : Math.PI - object.endAngle; }
-  if (object.type === 'text') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
-  syncLinkedDimensions(object);
-  render(); setStatus(`${axis === 'horizontal' ? 'Horizontal' : 'Vertikal'} gespiegelt`);
+  const objects = selectedObjects(); if (!objects.length) return;
+  const bounds = boundsForObjects(objects); const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }; pushHistory();
+  objects.forEach(object => {
+    if (object.type === 'line' || object.type === 'dimension') { const a = mirrorPoint({ x: object.x1, y: object.y1 }, center, axis); const b = mirrorPoint({ x: object.x2, y: object.y2 }, center, axis); Object.assign(object, { x1: a.x, y1: a.y, x2: b.x, y2: b.y }); }
+    if (object.type === 'polyline' || object.type === 'polygon') object.points = object.points.map(point => mirrorPoint(point, center, axis));
+    if (object.type === 'slot') { const a = mirrorPoint({ x: object.x1, y: object.y1 }, center, axis); const b = mirrorPoint({ x: object.x2, y: object.y2 }, center, axis); Object.assign(object, { x1: a.x, y1: a.y, x2: b.x, y2: b.y }); }
+    if (['rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'text'].includes(object.type)) { const oldCenter = objectCenter(object); const nextCenter = mirrorPoint(oldCenter, center, axis); translateObject(object, nextCenter.x - oldCenter.x, nextCenter.y - oldCenter.y); }
+    if (object.type === 'rect') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
+    if (object.type === 'ellipse' || object.type === 'ellipseArc') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
+    if (object.type === 'semicircle') object.angle = axis === 'horizontal' ? -(object.angle || 0) : Math.PI - (object.angle || 0);
+    if (object.type === 'angleDimension') { const next = mirrorPoint({ x: object.cx, y: object.cy }, center, axis); object.cx = next.x; object.cy = next.y; object.startAngle = axis === 'horizontal' ? -object.startAngle : Math.PI - object.startAngle; object.endAngle = axis === 'horizontal' ? -object.endAngle : Math.PI - object.endAngle; }
+    if (object.type === 'text') object.rotation = axis === 'horizontal' ? -(object.rotation || 0) : Math.PI - (object.rotation || 0);
+    syncLinkedDimensions(object);
+  });
+  render(); setStatus(`${objects.length} Objekt(e) ${axis === 'horizontal' ? 'horizontal' : 'vertikal'} gespiegelt`);
 }
 function createRectangularArray() {
   const object = state.objects.find(item => item.id === selectedId); if (!object) return;
@@ -1048,8 +1240,10 @@ function scaleObject(object, factor) {
   if (object.type === 'line' || object.type === 'dimension') { object.x1 *= factor; object.y1 *= factor; object.x2 *= factor; object.y2 *= factor; }
   if (object.type === 'rect') { object.x *= factor; object.y *= factor; object.width *= factor; object.height *= factor; }
   if (object.type === 'circle' || object.type === 'semicircle') { object.x *= factor; object.y *= factor; object.r *= factor; }
+  if (object.type === 'ellipse' || object.type === 'ellipseArc') { object.x *= factor; object.y *= factor; object.rx *= factor; object.ry *= factor; }
+  if (object.type === 'slot') { object.x1 *= factor; object.y1 *= factor; object.x2 *= factor; object.y2 *= factor; object.width *= factor; }
   if (object.type === 'angleDimension') { object.cx *= factor; object.cy *= factor; object.r *= factor; }
-  if (object.type === 'polyline') object.points.forEach(point => { point.x *= factor; point.y *= factor; });
+  if (object.type === 'polyline' || object.type === 'polygon') object.points.forEach(point => { point.x *= factor; point.y *= factor; });
   if (object.type === 'text') { object.x *= factor; object.y *= factor; }
 }
 function setSelectedAsReference() {
@@ -1060,14 +1254,12 @@ function setSelectedAsReference() {
   if (object.type === 'line' || object.type === 'dimension') currentLength = distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 });
   if (object.type === 'rect') currentLength = document.querySelector('#referenceRectSide')?.value === 'width' ? object.width : object.height;
   if (currentLength < 0.001) { setStatus('Richtmaß benötigt eine vorhandene Länge'); return; }
-  pushHistory();
   const factor = targetLength / currentLength;
   const view = objectView(object);
-  state.objects.filter(item => objectView(item) === view).forEach(item => scaleObject(item, factor));
-  state.objects.filter(item => objectView(item) === view && item.type === 'rect').forEach(syncLinkedDimensions);
   state.viewReferences[view] = { targetLength, factor, updatedAt: new Date().toISOString() };
+  setDirty();
   render();
-  setStatus(`Richtmaß ${viewNames[view]} gesetzt: ${formatLength(targetLength)}`);
+  setStatus(`Bemaßungen der ${viewNames[view]} auf ${formatLength(targetLength)} kalibriert`);
 }
 function applySelectedChanges() {
   const object = state.objects.find(item => item.id === selectedId);
@@ -1075,7 +1267,8 @@ function applySelectedChanges() {
   const form = propertyPanel.querySelector('.property-form');
   const values = Object.fromEntries([...form.querySelectorAll('[name]')].map(input => [input.name, input.value]));
   pushHistory();
-  Object.keys(values).forEach(key => { object[key] = ['strokeWidth', 'x', 'y', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'offset', 'r', 'angleDeg', 'dimensionDecimals'].includes(key) && values[key] !== '' ? Number(values[key]) : values[key]; });
+  Object.keys(values).forEach(key => { object[key] = ['strokeWidth', 'x', 'y', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'offset', 'r', 'rx', 'ry', 'cornerSize', 'angleDeg', 'dimensionDecimals'].includes(key) && values[key] !== '' ? Number(values[key]) : values[key]; });
+  object.locked = values.locked === 'true';
   if (object.type === 'semicircle' && Number.isFinite(object.angleDeg)) { object.angle = object.angleDeg * Math.PI / 180; delete object.angleDeg; }
   if ((object.type === 'dimension' || object.type === 'angleDimension') && !String(object.labelOverride || '').trim()) delete object.labelOverride;
   if (object.type === 'dimension' && !object.dimensionUnit) delete object.dimensionUnit;
@@ -1090,6 +1283,15 @@ function applySelectedChanges() {
   render();
   setStatus('Änderungen übernommen');
 }
+function showContextMenu(x, y) { const menu = document.querySelector('#contextMenu'); menu.hidden = false; menu.style.left = `${Math.min(x, innerWidth - 190)}px`; menu.style.top = `${Math.min(y, innerHeight - 280)}px`; }
+function hideContextMenu() { document.querySelector('#contextMenu').hidden = true; }
+function dimensionSelectedFromMenu() {
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  if (object.type === 'rect') addRectDimensions();
+  else if (object.type === 'circle' || object.type === 'semicircle') addRadiusDimension();
+  else if (object.type === 'line') { pushHistory(); state.objects.push({ type: 'dimension', id: newId(), view: objectView(object), layer: 'dimension', x1: object.x1, y1: object.y1, x2: object.x2, y2: object.y2, offset: dimensionStyle().defaultOffset, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }); render(); setStatus('Linie bemaßt'); }
+  else setStatus('Für diesen Objekttyp ist keine Schnellbemaßung verfügbar');
+}
 function syncLinkedDimensions(object) {
   if (!object || object.type !== 'rect') return;
   const [topLeft, topRight, bottomRight, bottomLeft] = rectCorners(object);
@@ -1098,8 +1300,8 @@ function syncLinkedDimensions(object) {
     if (item.autoRectSide === 'height') { item.x1 = bottomRight.x; item.y1 = bottomRight.y; item.x2 = topRight.x; item.y2 = topRight.y; }
   });
 }
-function deleteSelected() { if (!selectedId) return; pushHistory(); state.objects = state.objects.filter(object => object.id !== selectedId); selectedId = null; propertyPanel.innerHTML = '<div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div>'; document.querySelector('#selectionCount').textContent = 'Nichts ausgewählt'; render(); setStatus('Objekt gelöscht'); }
-function copySelected() { const object = state.objects.find(item => item.id === selectedId); if (!object) return; clipboard = JSON.parse(JSON.stringify(object)); setStatus('Kopiert – Strg+V zum Einfügen'); }
+function deleteSelected() { if (!selectedIds.size && !selectedId) return; pushHistory(); const ids = selectedIds.size ? new Set(selectedIds) : new Set([selectedId]); state.objects = state.objects.filter(object => !ids.has(object.id)); selectedId = null; selectedIds.clear(); propertyPanel.innerHTML = '<div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div>'; document.querySelector('#selectionCount').textContent = 'Nichts ausgewählt'; render(); setStatus(`${ids.size} Objekt(e) gelöscht`); }
+function copySelected() { const objects = selectedObjects(); if (!objects.length) return; clipboard = JSON.parse(JSON.stringify(objects)); setStatus(`${objects.length} Objekt(e) kopiert – Strg+V zum Einfügen`); }
 function addSelectedToMaterialList() {
   const object = state.objects.find(item => item.id === selectedId);
   if (!object) return;
@@ -1178,7 +1380,7 @@ function addAngleDimension() {
   render();
   setStatus('Winkelbemaßung erstellt');
 }
-function pasteClipboard() { if (!clipboard) { setStatus('Nichts zum Einfügen'); return; } pushHistory(); const copy = JSON.parse(JSON.stringify(clipboard)); copy.id = newId(); const offset = 400; if (copy.type === 'line' || copy.type === 'dimension') { copy.x1 += offset; copy.y1 += offset; copy.x2 += offset; copy.y2 += offset; } else if (copy.type === 'rect' || copy.type === 'circle' || copy.type === 'semicircle') { copy.x += offset; copy.y += offset; } else if (copy.type === 'angleDimension') { copy.cx += offset; copy.cy += offset; } else if (copy.type === 'polyline') copy.points.forEach(p => { p.x += offset; p.y += offset; }); else if (copy.type === 'text') { copy.x += offset; copy.y += offset; } state.objects.push(copy); selectedId = copy.id; render(); setStatus('Objekt eingefügt'); }
+function pasteClipboard() { if (!clipboard) { setStatus('Nichts zum Einfügen'); return; } pushHistory(); const copies = (Array.isArray(clipboard) ? clipboard : [clipboard]).map(source => { const copy = cloneObject(source); translateObject(copy, 400, 400); return copy; }); state.objects.push(...copies); selectedIds = new Set(copies.map(copy => copy.id)); selectedId = copies.at(-1).id; render(); setStatus(`${copies.length} Objekt(e) eingefügt`); }
 function handlePointerDown(event) {
   if (event.button === 1 || (spacePressed && event.button === 0)) {
     event.preventDefault();
@@ -1187,10 +1389,11 @@ function handlePointerDown(event) {
     canvas.classList.add('panning');
     return;
   }
-  const point = eventPoint(event, state.tool === 'dimension');
+  const point = eventPoint(event, toolUsesObjectSnap(), polylinePoints.at(-1) || null);
+  if (state.tool === 'smartTrim' || state.tool === 'smartExtend') { smartEditLineAt(point, state.tool === 'smartTrim' ? 'trim' : 'extend'); return; }
   if (state.tool === 'select') {
     const hitObject = activeViewObjects().find(object => {
-      const hitThreshold = 400;
+      const hitThreshold = Math.max(12, state.scale * 12);
       if (object.type === 'line' || object.type === 'dimension') {
         return distanceToLine(point, object.x1, object.y1, object.x2, object.y2) <= hitThreshold;
       }
@@ -1203,10 +1406,15 @@ function handlePointerDown(event) {
       if (object.type === 'circle' || object.type === 'semicircle') {
         return Math.abs(distance(point, { x: object.x, y: object.y }) - object.r) <= hitThreshold;
       }
+      if (object.type === 'ellipse' || object.type === 'ellipseArc') {
+        const value = Math.hypot((point.x - object.x) / object.rx, (point.y - object.y) / object.ry);
+        return Math.abs(value - 1) * Math.max(object.rx, object.ry) <= hitThreshold;
+      }
+      if (object.type === 'slot') return distanceToLine(point, object.x1, object.y1, object.x2, object.y2) <= object.width / 2 + hitThreshold;
       if (object.type === 'angleDimension') {
         return Math.abs(distance(point, { x: object.cx, y: object.cy }) - object.r) <= hitThreshold;
       }
-      if (object.type === 'polyline') {
+      if (object.type === 'polyline' || object.type === 'polygon') {
         return object.points.some(p => distance(point, p) <= hitThreshold);
       }
       if (object.type === 'text') {
@@ -1216,11 +1424,13 @@ function handlePointerDown(event) {
     });
     if (hitObject) {
       canvas.setPointerCapture?.(event.pointerId);
-      startDraggingObject(hitObject, point);
+      startDraggingObject(hitObject, point, event.shiftKey);
     } else {
-      selectedId = null;
+      if (!event.shiftKey) { selectedId = null; selectedIds.clear(); }
       draggingObject = null;
       dragChanged = false;
+      selectionBoxStart = point;
+      canvas.setPointerCapture?.(event.pointerId);
       render();
     }
     return;
@@ -1243,7 +1453,14 @@ function handlePointerMove(event) {
     applyViewBox();
     return;
   }
-  const point = eventPoint(event, !draggingObject && state.tool === 'dimension', pointerStart); document.querySelector('#cursorCoords').textContent = `X ${formatLength(point.x)}   Y ${formatLength(point.y)}`;
+  const snapOrigin = pointerStart || polylinePoints.at(-1) || null;
+  const point = eventPoint(event, !draggingObject && toolUsesObjectSnap(), snapOrigin); document.querySelector('#cursorCoords').textContent = `X ${formatLength(point.x)}   Y ${formatLength(point.y)}`;
+  if (selectionBoxStart && state.tool === 'select') {
+    clearPreview();
+    const x = Math.min(selectionBoxStart.x, point.x); const y = Math.min(selectionBoxStart.y, point.y);
+    previewLayer.append(makeSvg('rect', { x: canvasValue(x), y: canvasValue(y), width: canvasValue(Math.abs(point.x - selectionBoxStart.x)), height: canvasValue(Math.abs(point.y - selectionBoxStart.y)), class: 'selection-box' }));
+    return;
+  }
   if (draggingHandle) {
     moveHandle(point);
     return;
@@ -1262,13 +1479,13 @@ function handlePointerMove(event) {
       const lineLength = Math.hypot(lineDx, lineDy) || 1;
       const normal = { x: -lineDy / lineLength, y: lineDx / lineLength };
       draggingObject.offset = (Number.isFinite(Number(draggingObject.offset)) ? Number(draggingObject.offset) : dimensionStyle().defaultOffset) + (dx / state.scale) * normal.x + (dy / state.scale) * normal.y;
-    } else translateObject(draggingObject, dx, dy);
+    } else draggingObjects.forEach(object => translateObject(object, dx, dy));
     dragChanged = true;
     pointerStart = point;
     render();
     return;
   }
-  if (!pointerStart) { updateLiveAngle(null, null); clearPreview(); if (state.tool === 'dimension') drawSnapMarker(); if (state.tool === 'polyline') previewPolyline(point); return; }
+  if (!pointerStart) { updateLiveAngle(null, null); clearPreview(); if (toolUsesObjectSnap()) drawSnapMarker(); if (state.tool === 'polyline') { previewPolyline(point); drawSnapMarker(); } return; }
   if (state.tool === 'line' || state.tool === 'dimension') { const end = lineEndPoint(pointerStart, point, event); previewLine(pointerStart, end); drawAngleLabel(pointerStart, end); updateLiveAngle(pointerStart, end); drawSnapMarker(); }
   if (state.tool === 'circle' || state.tool === 'semicircle') {
     clearPreview();
@@ -1279,9 +1496,25 @@ function handlePointerMove(event) {
     drawAngleLabel(pointerStart, end);
     updateLiveAngle(pointerStart, end);
   }
+  if (state.tool === 'ellipse' || state.tool === 'ellipseArc') {
+    clearPreview(); const rx = Math.abs(point.x - pointerStart.x); const ry = Math.abs(point.y - pointerStart.y);
+    renderObject({ type: state.tool, x: pointerStart.x, y: pointerStart.y, rx, ry, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer);
+  }
+  if (state.tool === 'slot') { clearPreview(); renderObject({ type: 'slot', x1: pointerStart.x, y1: pointerStart.y, x2: point.x, y2: point.y, width: Number(document.querySelector('#targetRectHeight')?.value) || 200, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
+  if (state.tool === 'polygon') { clearPreview(); const sides = Math.max(3, Math.min(24, Number(document.querySelector('#polygonSides')?.value) || 6)); const radius = distance(pointerStart, point); const angle = Math.atan2(point.y - pointerStart.y, point.x - pointerStart.x); const points = Array.from({ length: sides }, (_, index) => polarPoint(pointerStart, radius, angle + index * Math.PI * 2 / sides)); renderObject({ type: 'polygon', points, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
   if (state.tool === 'rect') { clearPreview(); const end = exactRectEndPoint(pointerStart, point); const x = Math.min(pointerStart.x, end.x); const y = Math.min(pointerStart.y, end.y); renderObject({ type: 'rect', x, y, width: Math.abs(end.x - pointerStart.x), height: Math.abs(end.y - pointerStart.y), style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
 }
 function handlePointerUp(event) {
+  if (selectionBoxStart) {
+    const end = eventPoint(event);
+    const box = { minX: Math.min(selectionBoxStart.x, end.x), minY: Math.min(selectionBoxStart.y, end.y), maxX: Math.max(selectionBoxStart.x, end.x), maxY: Math.max(selectionBoxStart.y, end.y) };
+    activeViewObjects().filter(object => !isObjectLocked(object)).forEach(object => {
+      const bounds = objectBounds(object);
+      if (bounds && bounds.maxX >= box.minX && bounds.minX <= box.maxX && bounds.maxY >= box.minY && bounds.minY <= box.maxY) selectedIds.add(object.id);
+    });
+    selectedId = [...selectedIds].at(-1) || null;
+    selectionBoxStart = null; clearPreview(); canvas.releasePointerCapture?.(event.pointerId); render(); setStatus(`${selectedIds.size} Objekt(e) ausgewählt`); return;
+  }
   if (panStart) {
     canvas.releasePointerCapture?.(event.pointerId);
     panStart = null;
@@ -1297,6 +1530,7 @@ function handlePointerUp(event) {
   if (draggingObject) {
     canvas.releasePointerCapture?.(event.pointerId);
     draggingObject = null;
+    draggingObjects = [];
     dragMode = 'move';
     pointerStart = null;
     setStatus(dragChanged ? 'Objekt verschoben' : 'Objekt ausgewählt');
@@ -1305,16 +1539,19 @@ function handlePointerUp(event) {
     return;
   }
   if (state.tool === 'polyline') return;
-  if (!pointerStart) return; const point = eventPoint(event, state.tool === 'dimension', pointerStart); const start = pointerStart; pointerStart = null; clearPreview();
+  if (!pointerStart) return; const point = eventPoint(event, toolUsesObjectSnap(), pointerStart); const start = pointerStart; pointerStart = null; clearPreview();
   const endPoint = state.tool === 'rect' ? exactRectEndPoint(start, point) : lineEndPoint(start, point, event);
   updateLiveAngle(null, null);
   if (distance(start, endPoint) < 3) return;
   if (state.tool === 'line') addObject({ type: 'line', x1: start.x, y1: start.y, x2: endPoint.x, y2: endPoint.y });
   if (state.tool === 'circle' || state.tool === 'semicircle') addObject({ type: state.tool, x: start.x, y: start.y, r: distance(start, endPoint), angle: Math.atan2(endPoint.y - start.y, endPoint.x - start.x) });
+  if (state.tool === 'ellipse' || state.tool === 'ellipseArc') addObject({ type: state.tool, x: start.x, y: start.y, rx: Math.abs(point.x - start.x), ry: Math.abs(point.y - start.y) });
+  if (state.tool === 'slot') addObject({ type: 'slot', x1: start.x, y1: start.y, x2: point.x, y2: point.y, width: Number(document.querySelector('#targetRectHeight')?.value) || 200 });
+  if (state.tool === 'polygon') { const sides = Math.max(3, Math.min(24, Number(document.querySelector('#polygonSides')?.value) || 6)); const radius = distance(start, point); const angle = Math.atan2(point.y - start.y, point.x - start.x); addObject({ type: 'polygon', points: Array.from({ length: sides }, (_, index) => polarPoint(start, radius, angle + index * Math.PI * 2 / sides)) }); }
   if (state.tool === 'dimension') addObject({ type: 'dimension', x1: start.x, y1: start.y, x2: endPoint.x, y2: endPoint.y, offset: dimensionStyle().defaultOffset });
   if (state.tool === 'rect') addObject({ type: 'rect', x: Math.min(start.x, endPoint.x), y: Math.min(start.y, endPoint.y), width: Math.abs(endPoint.x - start.x), height: Math.abs(endPoint.y - start.y), fillMode: 'none' });
 }
-function setTool(tool) { state.tool = tool; document.querySelectorAll('.tool-button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool)); document.querySelector('#toolHint').textContent = `${toolNames[tool]} aktiv`; document.querySelector('#lineLengthPanel').hidden = !['line', 'dimension', 'rect', 'circle', 'semicircle'].includes(tool); updateLiveAngle(null, null); clearPreview(); polylinePoints = []; }
+function setTool(tool) { state.tool = tool; document.querySelectorAll('.tool-button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool)); document.querySelector('#toolHint').textContent = `${toolNames[tool]} aktiv`; document.querySelector('#lineLengthPanel').hidden = !['line', 'dimension', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(tool); updateLiveAngle(null, null); clearPreview(); polylinePoints = []; }
 function saveProject() { state.projectName = document.querySelector('#projectName').value || 'Projekt01'; const data = { app: 'Werkplan', version: 2, unit: 'mm', projectName: state.projectName, objects: state.objects, settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale } }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${state.projectName.replace(/[^a-z0-9_-]+/gi, '_')}.werkplan`; link.click(); URL.revokeObjectURL(link.href); setStatus('Projekt gespeichert'); }
 function loadProject(file) { const reader = new FileReader(); reader.onload = () => { try { const data = JSON.parse(reader.result); pushHistory(); state.objects = Array.isArray(data.objects) ? data.objects : []; state.projectName = data.projectName || 'Projekt01'; document.querySelector('#projectName').value = state.projectName; state.grid = data.settings?.grid ?? true; state.snap = data.settings?.snap ?? true; state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 1; syncScaleControls(); document.querySelector('#gridToggle').checked = state.grid; document.querySelector('#snapToggle').checked = state.snap; selectedId = null; render(); setStatus('Projekt geladen'); } catch { setStatus('Datei konnte nicht gelesen werden'); } }; reader.readAsText(file); }
 function exportSvg() { const copy = canvas.cloneNode(true); copy.querySelector('#previewLayer')?.remove(); const source = new XMLSerializer().serializeToString(copy); const blob = new Blob([source], { type: 'image/svg+xml' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${state.projectName || 'werkplan'}.svg`; link.click(); URL.revokeObjectURL(link.href); setStatus('SVG exportiert'); }
@@ -1329,11 +1566,16 @@ function renderExportObject(object, layer, bounds, exportScale, offsetX = sheet.
   if (object.type === 'rect') {
     const x = exportPoint(object.x, bounds.minX, exportScale, offsetX); const y = exportPoint(object.y, bounds.minY, exportScale, offsetY);
     const width = object.width / exportScale; const height = object.height / exportScale;
-    element = makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x, y, width, height, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x + width / 2} ${y + height / 2})` });
+    const path = rectShapePath(object, exportScale, offsetX - bounds.minX / exportScale, offsetY - bounds.minY / exportScale);
+    element = path ? makeSvg('path', { ...attrs, ...rectFillAttrs(object), d: path, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x + width / 2} ${y + height / 2})` }) : makeSvg('rect', { ...attrs, ...rectFillAttrs(object), x, y, width, height, rx: object.cornerMode === 'round' ? (object.cornerSize || 0) / exportScale : 0, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${x + width / 2} ${y + height / 2})` });
   }
   if (object.type === 'circle') element = makeSvg('circle', { ...attrs, cx: exportPoint(object.x, bounds.minX, exportScale, offsetX), cy: exportPoint(object.y, bounds.minY, exportScale, offsetY), r: object.r / exportScale });
   if (object.type === 'semicircle') element = makeSvg('path', { ...attrs, d: semicirclePath(object, exportScale, offsetX - bounds.minX / exportScale, offsetY - bounds.minY / exportScale) });
   if (object.type === 'polyline') element = makeSvg('polyline', { ...attrs, points: object.points.map(point => `${exportPoint(point.x, bounds.minX, exportScale, offsetX)},${exportPoint(point.y, bounds.minY, exportScale, offsetY)}`).join(' ') });
+  if (object.type === 'polygon') element = makeSvg('polygon', { ...attrs, points: object.points.map(point => `${exportPoint(point.x, bounds.minX, exportScale, offsetX)},${exportPoint(point.y, bounds.minY, exportScale, offsetY)}`).join(' ') });
+  if (object.type === 'ellipse') { const cx = exportPoint(object.x, bounds.minX, exportScale, offsetX); const cy = exportPoint(object.y, bounds.minY, exportScale, offsetY); element = makeSvg('ellipse', { ...attrs, cx, cy, rx: object.rx / exportScale, ry: object.ry / exportScale, transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${cx} ${cy})` }); }
+  if (object.type === 'ellipseArc') { const cx = exportPoint(object.x, bounds.minX, exportScale, offsetX); const cy = exportPoint(object.y, bounds.minY, exportScale, offsetY); element = makeSvg('path', { ...attrs, d: ellipseArcPath(object, exportScale, offsetX - bounds.minX / exportScale, offsetY - bounds.minY / exportScale), transform: `rotate(${(object.rotation || 0) * 180 / Math.PI} ${cx} ${cy})` }); }
+  if (object.type === 'slot') element = makeSvg('path', { ...attrs, d: slotPath(object, exportScale, offsetX - bounds.minX / exportScale, offsetY - bounds.minY / exportScale) });
   if (object.type === 'angleDimension') {
     const style = dimensionStyle();
     const angleOffsetX = offsetX - bounds.minX / exportScale;
@@ -1396,26 +1638,28 @@ function renderExportViews(root) {
   const slotWidth = (totalWidth - gap * (groups.length - 1)) / groups.length;
   const viewLayouts = groups.map((group, index) => {
     const bounds = boundsForObjects(group.objects, 500);
-    const x = sheet.margin + index * (slotWidth + gap);
-    const y = sheet.margin + labelHeight;
+    const setting = ensureViewSetting(group.view);
+    const x = Number.isFinite(setting.exportX) ? setting.exportX : sheet.margin + index * (slotWidth + gap);
+    const y = Number.isFinite(setting.exportY) ? setting.exportY : sheet.margin + labelHeight;
     const usableHeight = Math.max(120, areaHeight - labelHeight);
     const requiredScale = bounds ? calculateRequiredExportScale(bounds, slotWidth, usableHeight) : 1;
-    return { ...group, bounds, x, y, usableHeight, requiredScale };
+    return { ...group, bounds, x, y, usableHeight, requiredScale, setting };
   });
   const filledLayouts = viewLayouts.filter(layout => layout.bounds);
-  const requiredScale = Math.max(...filledLayouts.map(layout => layout.requiredScale), 1);
-  const commonScale = state.autoScale ? (scaleSteps.find(step => step >= requiredScale) || Math.ceil(requiredScale / 1000) * 1000) : Math.max(state.scale, scaleSteps.find(step => step >= requiredScale) || Math.ceil(requiredScale / 1000) * 1000);
+  const usedScales = [];
   viewLayouts.forEach(group => {
     if (groups.length > 1) {
       addTableText(drawing, group.x, sheet.margin + 15, viewNames[group.view], { 'font-size': 13, 'font-weight': 700, fill: '#263238' });
       drawing.append(makeSvg('rect', { x: group.x, y: group.y, width: slotWidth, height: group.usableHeight, fill: 'none', stroke: '#d6dfdd', 'stroke-width': 0.7, 'stroke-dasharray': '5 5' }));
     }
     if (!group.bounds) return;
-    group.objects.forEach(object => renderExportObject(object, drawing, group.bounds, commonScale, group.x, group.y));
-    renderExportMaterialMarkers(drawing, group.bounds, commonScale, group.objects, group.x, group.y);
+    const exportScale = group.setting.autoScale !== false ? (scaleSteps.find(step => step >= group.requiredScale) || Math.ceil(group.requiredScale / 1000) * 1000) : Math.max(1, Number(group.setting.scale) || 20);
+    usedScales.push(exportScale);
+    group.objects.forEach(object => renderExportObject(object, drawing, group.bounds, exportScale, group.x, group.y));
+    renderExportMaterialMarkers(drawing, group.bounds, exportScale, group.objects, group.x, group.y);
   });
   root.append(drawing);
-  return commonScale || state.scale;
+  return [...new Set(usedScales)].join(' / 1:') || state.scale;
 }
 function addTitleCell(root, x, y, width, height, label, value) {
   root.append(makeSvg('rect', { x, y, width, height, fill: 'none', stroke: '#263238', 'stroke-width': 1 }));
@@ -1602,9 +1846,10 @@ saveProject = function() {
   updateDimensionStyleFromControls();
   updateProjectMetaFromForm();
   updateMaterialsFromForm();
+  saveActiveViewSettings();
   const data = {
     app: 'Werkplan',
-    version: 5,
+    version: 7,
     unit: 'mm',
     projectName: state.projectName,
     drawingNumber: state.drawingNumber,
@@ -1612,7 +1857,7 @@ saveProject = function() {
     projectDate: state.projectDate,
     materials: state.materials,
     objects: state.objects,
-    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView, viewReferences: state.viewReferences }
+    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView, viewReferences: state.viewReferences, layers: state.layers, activeLayer: state.activeLayer, viewSettings: state.viewSettings }
   };
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${fileBaseName()}.werkplan`);
   setDirty(false);
@@ -1643,17 +1888,24 @@ loadProject = function(file) {
       state.enabledViews = Array.isArray(data.settings?.enabledViews) ? data.settings.enabledViews.filter(view => viewNames[view]) : ['front'];
       state.activeView = viewNames[data.settings?.activeView] ? data.settings.activeView : state.enabledViews[0];
       state.viewReferences = data.settings?.viewReferences && typeof data.settings.viewReferences === 'object' ? data.settings.viewReferences : {};
+      if (Number(data.version) < 7) Object.values(state.viewReferences).forEach(reference => { reference.factor = 1; });
+      if (Array.isArray(data.settings?.layers)) state.layers = data.settings.layers;
+      state.activeLayer = data.settings?.activeLayer || state.layers[0].id;
+      state.viewSettings = data.settings?.viewSettings && typeof data.settings.viewSettings === 'object' ? data.settings.viewSettings : {};
       document.querySelector('#sheetFormat').value = state.sheetFormat;
       document.querySelector('#sheetOrientation').value = state.sheetOrientation;
       syncViewControls();
+      renderLayerControls();
       state.dimensionStyle = data.settings?.dimensionStyle || state.dimensionStyle;
       syncDimensionStyleControls();
       state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 20;
-      setViewportZoom(Number(data.settings?.zoom) > 0 ? Number(data.settings.zoom) : 1);
+      const legacyZoom = Number(data.settings?.zoom) > 0 ? Number(data.settings.zoom) : 1;
+      if (!state.viewSettings[state.activeView]) state.viewSettings[state.activeView] = { scale: state.scale, autoScale: state.autoScale, viewBox: { x: 0, y: 0, width: 1200 / legacyZoom, height: 760 / legacyZoom }, layerVisibility: {}, exportX: null, exportY: null };
+      loadActiveViewSettings();
       syncScaleControls();
       document.querySelector('#gridToggle').checked = state.grid;
       document.querySelector('#snapToggle').checked = state.snap;
-      selectedId = null;
+      selectedId = null; selectedIds.clear();
       render();
       setDirty(false);
       setStatus('Projekt geladen');
@@ -1673,16 +1925,23 @@ document.querySelector('#strokeColor').addEventListener('input', event => { stat
   document.querySelector(selector)?.addEventListener('change', () => { updateDimensionStyleFromControls(); render(); });
 });
 document.querySelector('#scaleSelect').addEventListener('change', event => { if (event.target.value === 'custom') { document.querySelector('#customScaleWrap').hidden = false; document.querySelector('#customScale').focus(); } else setScale(event.target.value); });
-document.querySelector('#scaleSelect').addEventListener('change', event => { if (event.target.value === 'auto') { state.autoScale = true; setDirty(); syncScaleControls(); render(); setStatus('Massstab automatisch berechnet'); } });
+document.querySelector('#scaleSelect').addEventListener('change', event => { if (event.target.value === 'auto') { state.autoScale = true; ensureViewSetting().autoScale = true; setDirty(); syncScaleControls(); render(); setStatus('Massstab automatisch berechnet'); } });
 document.querySelector('#customScale').addEventListener('change', event => setScale(event.target.value));
 document.querySelector('#sheetFormat')?.addEventListener('change', event => { state.sheetFormat = event.target.value; setDirty(); render(); setStatus('Blattformat geändert'); });
 document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; setDirty(); render(); setStatus('Blattausrichtung geändert'); });
 document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); setDirty(); render(); setStatus('Exportansichten geändert'); }));
 document.querySelectorAll('.view-button').forEach(button => button.addEventListener('click', () => setActiveView(button.dataset.view)));
+['#objectSearch', '#objectTypeFilter', '#objectViewFilter', '#objectLayerFilter'].forEach(selector => document.querySelector(selector)?.addEventListener('input', renderObjectList));
+document.querySelector('#objectTypeFilter').innerHTML += Object.entries(toolNames).filter(([type]) => !['select','smartTrim','smartExtend'].includes(type)).map(([type, name]) => `<option value="${type}">${name}</option>`).join('');
+document.querySelector('#objectLayerFilter').innerHTML += state.layers.map(layer => `<option value="${layer.id}">${layer.name}</option>`).join('');
+document.querySelector('#contextMenu').addEventListener('click', event => { const action = event.target.dataset.action; if (!action) return; if (action === 'copy') copySelected(); if (action === 'rotate') { const field = propertyPanel.querySelector('[name="rotateAngle"]'); if (field) field.value = 90; rotateSelectedExact(); } if (action === 'mirrorH') mirrorSelected('horizontal'); if (action === 'mirrorV') mirrorSelected('vertical'); if (action === 'dimension') dimensionSelectedFromMenu(); if (action === 'material') addSelectedToMaterialList(); if (action === 'delete') deleteSelected(); hideContextMenu(); });
+document.addEventListener('pointerdown', event => { if (!event.target.closest('#contextMenu')) hideContextMenu(); });
 document.querySelector('#gridToggle').addEventListener('change', event => { state.grid = event.target.checked; setDirty(); render(); });
 document.querySelector('#snapToggle').addEventListener('change', event => { state.snap = event.target.checked; setDirty(); });
 document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); setDirty(); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
-document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; document.querySelector('#projectName').value = state.projectName; syncViewControls(); renderMaterialList(); selectedId = null; render(); setDirty(false); setStatus('Neue Zeichnung'); });
+document.querySelector('#activeLayer')?.addEventListener('change', event => { state.activeLayer = event.target.value; setDirty(); renderLayerControls(); });
+['#viewExportX', '#viewExportY'].forEach((selector, index) => document.querySelector(selector)?.addEventListener('change', event => { const value = event.target.value === '' ? null : Number(event.target.value); ensureViewSetting()[index === 0 ? 'exportX' : 'exportY'] = Number.isFinite(value) ? value : null; setDirty(); }));
+document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; state.viewSettings = {}; state.layers.forEach(layer => { layer.visible = true; layer.locked = false; layer.printable = layer.id !== 'guide'; }); state.activeLayer = 'contour'; document.querySelector('#projectName').value = state.projectName; loadActiveViewSettings(); syncViewControls(); renderLayerControls(); renderMaterialList(); selectedId = null; selectedIds.clear(); render(); setDirty(false); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
 document.querySelector('#undoAction')?.addEventListener('click', undo);
@@ -1705,6 +1964,8 @@ document.querySelector('#sheetFormat').value = state.sheetFormat;
 document.querySelector('#sheetOrientation').value = state.sheetOrientation;
 ['#projectName', '#drawingNumber', '#drawnBy', '#projectDate'].forEach(selector => document.querySelector(selector)?.addEventListener('input', () => setDirty()));
 syncViewControls();
+renderLayerControls();
+syncViewSettingControls();
 syncDimensionStyleControls();
 renderMaterialList();
 syncScaleControls();
