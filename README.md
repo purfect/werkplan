@@ -52,6 +52,20 @@ Klicken, Text eingeben, Enter zum Bestätigen.
 - **Polygon**: Mittelpunkt anklicken und Radius ziehen; die Seitenzahl wird links eingestellt
 - **Fase / Abrundung**: Rechteck auswählen und unter Eigenschaften Eckenart und Eckmaß einstellen
 
+### Füllungen und Schraffuren
+
+Rechtecke können im Eigenschaftenbereich mit folgenden Füllungen versehen werden:
+
+- Vollfläche schwarz
+- Diagonal 45° und Diagonal -45°
+- Kreuzschraffur
+- Horizontale und vertikale Schraffur
+- Punktraster
+- Mauerwerk / Ziegel
+- Beton
+
+Die Muster werden identisch auf der Arbeitsfläche sowie im SVG-, PNG- und PDF-Export ausgegeben.
+
 ### Intelligentes Trimmen und Verlängern
 
 **Trimmen** oder **Verlängern** wählen und eine Linie nahe dem zu bearbeitenden Ende anklicken. Werkplan sucht entlang der Linie die nächste Schnittkante und setzt das Ende automatisch dorthin.
@@ -81,6 +95,8 @@ Neben Endpunkt, Mittelpunkt, Schnittpunkt, Kante und Lotpunkt stehen Quadrant, T
 ## Maßstab und Richtmaß
 
 Rechts unter **Maßstab & Richtmaß** kann zwischen 1:1, 1:10, 1:20, 1:50, 1:100 oder einem eigenen Maßstab gewählt werden. Die Objekte werden immer in echten Millimetern gespeichert; der Maßstab steuert nur, wie viel davon auf dem Zeichenblatt sichtbar ist. Bei 1:20 entsprechen 100 mm auf dem Blatt 2.000 mm in der Planung.
+
+Die Leiste oberhalb der Zeichenfläche zeigt das aktuelle Blattformat und die Orientierung dynamisch an, zum Beispiel **A3 quer**, **A4 quer** oder **A4 hoch**.
 
 Die aktive Arbeitsansicht wird direkt in der Leiste oberhalb der Zeichenfläche umgeschaltet. Das farbig hervorgehobene Segment und die ausgeschriebene Bezeichnung zeigen jederzeit, ob gerade Frontansicht, Seitenansicht, Draufsicht oder Detail bearbeitet wird.
 
@@ -113,6 +129,32 @@ Für ein Objekt in einer anderen Arbeitsansicht zuerst oberhalb der Zeichenfläc
 - **Alles**: Alle Objekte der aktiven Ansicht einpassen
 - **Auswahl**: Das ausgewählte Objekt einpassen
 
+## Befehlssuche
+
+Mit `Strg + K` öffnet sich die Befehlssuche. Sie enthält:
+
+- alle Zeichen- und Bearbeitungswerkzeuge
+- Wechsel zwischen Front-, Seiten-, Drauf- und Detailansicht
+- Aktivieren einer Ebene
+- Neu, Laden, Speichern, Rückgängig und Wiederholen
+- SVG-, PNG- und PDF-Export
+- Zoom- und Einpassen-Befehle
+- Rasteranzeige und Rasterfang
+
+Nach dem Öffnen direkt tippen, mit Pfeil hoch/runter wählen und mit `Enter` ausführen. `Esc` oder ein Klick außerhalb schließt die Suche.
+
+## Projektwarnungen
+
+Der Bereich **Projektwarnungen** im rechten Panel prüft laufend:
+
+- Bemaßungen mit Verweis auf ein gelöschtes Objekt
+- Objekte auf einer gesperrten Ebene
+- Objekte auf einer nicht druckbaren Ebene
+- Ansichten, die durch eine manuelle Blattposition teilweise außerhalb des Exportblatts liegen
+- Materialpositionen mit Verweis auf ein gelöschtes Objekt
+
+Die Zahl im Abschnittskopf zeigt die Anzahl gefundener Probleme. Ein Klick auf eine objekt- oder ansichtsbezogene Warnung öffnet das betroffene Element. Bei fehlenden Materialobjekten bleibt die verwaiste ID in der Materialliste sichtbar, bis eine neue Verknüpfung gewählt oder die Position korrigiert wird.
+
 ## Speichern und Export
 
 Ein Stern vor dem Fenstertitel zeigt ungespeicherte Änderungen an. Mit `Strg + S` oder **Speichern** wird eine `.werkplan`-Datei erzeugt. Das aktuelle Dateiformat ist Version 9 und unterstützt Ebenen, Gruppen, neue Grundformen, getrennte Ansichtseinstellungen sowie objekt- und achsenbezogene Richtmaße.
@@ -123,6 +165,6 @@ Beim Export werden nicht druckbare Ebenen ausgelassen. Die ersten sechs Material
 
 In der Objektliste kann nach Name oder Typ sowie nach Ansicht und Ebene gefiltert werden. Objekte lassen sich dort sichtbar oder unsichtbar schalten, sperren, auswählen und anhand ihrer Material- oder Bemaßungsverknüpfungen prüfen. Objektname, Ebene und Sperre sind direkt in den Eigenschaften editierbar.
 
-Ein Rechtsklick auf ein Objekt öffnet Befehle für Kopieren, 90-Grad-Drehung, Spiegelung, Schnellbemaßung, Materialzuordnung und Löschen. Unter **Kopie einfügen in** kann die aktuelle Einzel- oder Mehrfachauswahl direkt in die Frontansicht, Seitenansicht, Draufsicht oder Detailansicht kopiert werden. Position, Geometrie, Ebene und objektbezogenes Richtmaß bleiben erhalten; automatisch verknüpfte Bemaßungen werden mitkopiert. Die Zielansicht wird danach automatisch geöffnet.
+Ein Rechtsklick auf ein Objekt öffnet Befehle für Kopieren, 90-Grad-Drehung, Spiegelung, Schnellbemaßung, Materialzuordnung und Löschen. Unter **Kopie einfügen in** kann die aktuelle Einzel- oder Mehrfachauswahl direkt in die Frontansicht, Seitenansicht, Draufsicht oder Detailansicht kopiert werden. Bei unterschiedlichen Ansichtsmaßstäben rechnet Werkplan die Modellkoordinaten automatisch um, sodass Position und sichtbare Größe auf der Arbeitsfläche erhalten bleiben. Ebene und objektbezogenes Richtmaß werden übernommen; automatisch verknüpfte Bemaßungen werden mitkopiert. Die Zielansicht wird danach automatisch geöffnet.
 
 Die verwendeten Schriften liegen als WOFF2-Dateien im Ordner `fonts`. Werkplan benötigt deshalb auch für die Typografie keine Internetverbindung. Die zugehörigen OFL-Lizenztexte befinden sich im selben Ordner.

@@ -44,12 +44,14 @@ let dragChanged = false;
 let dragHistoryCaptured = false;
 let polylinePoints = [];
 let clipboard = null;
+let clipboardSourceScale = 20;
 let currentSnap = null;
 let angleReferenceId = null;
 let viewBox = { x: 0, y: 0, width: 1200, height: 760 };
 let panStart = null;
 let spacePressed = false;
 let selectionBoxStart = null;
+let commandSelectionIndex = 0;
 
 const svgNS = 'http://www.w3.org/2000/svg';
 const snapSize = 10;
@@ -104,7 +106,19 @@ function addFillPatterns(root) {
   hatch.append(makeSvg('line', { x1: 0, y1: 0, x2: 0, y2: 10, stroke: '#263238', 'stroke-width': 1 }));
   const cross = makeSvg('pattern', { id: 'crossHatchFill', width: 10, height: 10, patternUnits: 'userSpaceOnUse' });
   cross.append(makeSvg('path', { d: 'M 0 0 L 10 10 M 10 0 L 0 10', stroke: '#263238', 'stroke-width': 0.9 }));
-  defs.append(hatch, cross);
+  const reverse = makeSvg('pattern', { id: 'reverseHatchFill', width: 10, height: 10, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(-45)' });
+  reverse.append(makeSvg('line', { x1: 0, y1: 0, x2: 0, y2: 10, stroke: '#263238', 'stroke-width': 1 }));
+  const horizontal = makeSvg('pattern', { id: 'horizontalHatchFill', width: 10, height: 10, patternUnits: 'userSpaceOnUse' });
+  horizontal.append(makeSvg('line', { x1: 0, y1: 5, x2: 10, y2: 5, stroke: '#263238', 'stroke-width': 1 }));
+  const vertical = makeSvg('pattern', { id: 'verticalHatchFill', width: 10, height: 10, patternUnits: 'userSpaceOnUse' });
+  vertical.append(makeSvg('line', { x1: 5, y1: 0, x2: 5, y2: 10, stroke: '#263238', 'stroke-width': 1 }));
+  const dots = makeSvg('pattern', { id: 'dotHatchFill', width: 10, height: 10, patternUnits: 'userSpaceOnUse' });
+  dots.append(makeSvg('circle', { cx: 3, cy: 3, r: 1.2, fill: '#263238' }), makeSvg('circle', { cx: 8, cy: 8, r: 1.2, fill: '#263238' }));
+  const brick = makeSvg('pattern', { id: 'brickHatchFill', width: 24, height: 12, patternUnits: 'userSpaceOnUse' });
+  brick.append(makeSvg('path', { d: 'M 0 0 H 24 M 0 6 H 24 M 0 12 H 24 M 6 0 V 6 M 18 0 V 6 M 0 6 V 12 M 12 6 V 12 M 24 6 V 12', fill: 'none', stroke: '#263238', 'stroke-width': 0.8 }));
+  const concrete = makeSvg('pattern', { id: 'concreteHatchFill', width: 28, height: 22, patternUnits: 'userSpaceOnUse' });
+  concrete.append(makeSvg('path', { d: 'M 3 5 l 4 -2 l 3 4 l -5 3 z M 17 4 l 5 1 l -2 5 l -4 -2 z M 10 16 l 4 -3 l 4 4 l -5 2 z M 23 15 l 3 3 l -4 2', fill: 'none', stroke: '#263238', 'stroke-width': 0.8 }));
+  defs.append(hatch, cross, reverse, horizontal, vertical, dots, brick, concrete);
 }
 function distance(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
 function polarPoint(center, radius, angle) { return { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius }; }
@@ -490,7 +504,9 @@ function renderMaterialList() {
     const row = document.createElement('div');
     row.className = 'material-row';
     row.dataset.index = index;
-    const objectOptions = ['<option value="">Kein Objekt</option>', ...state.objects.map((object, objectIndex) => `<option value="${escapeHtml(object.id)}">${escapeHtml(objectListLabel(object, objectIndex))}</option>`)].join('');
+    const objectExists = state.objects.some(object => object.id === item.objectId);
+    const missingOption = item.objectId && !objectExists ? `<option value="${escapeHtml(item.objectId)}">Objekt fehlt: ${escapeHtml(item.objectId)}</option>` : '';
+    const objectOptions = ['<option value="">Kein Objekt</option>', missingOption, ...state.objects.map((object, objectIndex) => `<option value="${escapeHtml(object.id)}">${escapeHtml(objectListLabel(object, objectIndex))}</option>`)].join('');
     row.innerHTML = `<label>Pos.<input name="pos" value="${escapeHtml(item.pos || String(index + 1))}"></label><label>Menge<input name="qty" value="${escapeHtml(item.qty || '1')}"></label><label>Einheit<select name="unit"><option value="St">St</option><option value="m">m</option><option value="m2">m²</option><option value="m3">m³</option><option value="kg">kg</option><option value="l">l</option></select></label><label>St./Objekt<input name="objectQty" type="number" min="1" step="1" value="${escapeHtml(item.objectQty || '1')}"></label><label class="wide-field">Verknüpftes Objekt<select name="objectId">${objectOptions}</select></label><label class="wide-field">Bezeichnung<input name="name" value="${escapeHtml(item.name || '')}"></label><label class="wide-field">Werkstoff / Material<input name="material" value="${escapeHtml(item.material || '')}"></label><label class="wide-field">Abmessung<input name="dimensions" value="${escapeHtml(item.dimensions || '')}"></label><label class="wide-field">Bemerkung<input name="note" value="${escapeHtml(item.note || '')}"></label><button class="calc-material" type="button">Optional: Menge berechnen</button><button class="remove-material" type="button">Position löschen</button>`;
     row.querySelector('[name="unit"]').value = item.unit || 'St';
     row.querySelector('[name="objectId"]').value = item.objectId || '';
@@ -502,7 +518,7 @@ function renderMaterialList() {
       updateMaterialsFromForm();
       render();
     });
-    row.querySelectorAll('input,select').forEach(input => input.addEventListener('input', () => { updateMaterialsFromForm(); setDirty(); }));
+    row.querySelectorAll('input,select').forEach(input => input.addEventListener('input', () => { updateMaterialsFromForm(); setDirty(); renderProjectWarnings(); }));
     row.querySelector('[name="pos"]').addEventListener('change', () => { updateMaterialsFromForm(); render(); });
     row.querySelector('.calc-material').addEventListener('click', () => {
       updateMaterialsFromForm();
@@ -601,6 +617,35 @@ function renderLayerControls() {
     list.append(row);
   });
 }
+function projectWarnings() {
+  updateSheetFromState();
+  const warnings = []; const objectIds = new Set(state.objects.map(object => object.id));
+  state.objects.forEach(object => {
+    const missingSourceId = object.sourceRectId || object.sourceObjectId;
+    if (missingSourceId && !objectIds.has(missingSourceId)) warnings.push({ type: 'link', objectId: object.id, message: `${object.name || toolNames[object.type] || 'Bemaßung'} verweist auf ein gelöschtes Objekt.` });
+    const layer = layerForObject(object);
+    if (layer.locked) warnings.push({ type: 'layer', objectId: object.id, message: `${object.name || toolNames[object.type] || 'Objekt'} liegt auf der gesperrten Ebene „${layer.name}“.` });
+    if (layer.printable === false) warnings.push({ type: 'print', objectId: object.id, message: `${object.name || toolNames[object.type] || 'Objekt'} liegt auf der nicht druckbaren Ebene „${layer.name}“.` });
+  });
+  state.materials.forEach((item, index) => { if (item.objectId && !objectIds.has(item.objectId)) warnings.push({ type: 'material', message: `Materialposition ${item.pos || index + 1} verweist auf ein gelöschtes Objekt.` }); });
+  enabledViews().forEach(view => {
+    const setting = ensureViewSetting(view); const hasManualPosition = Number.isFinite(setting.exportX) || Number.isFinite(setting.exportY);
+    if (!hasManualPosition) return;
+    const objects = state.objects.filter(object => objectView(object) === view && isObjectPrintable(object)); const bounds = boundsForObjects(objects);
+    if (!bounds) return;
+    const exportScale = setting.autoScale !== false ? calculateRequiredExportScale(bounds) : Math.max(1, Number(setting.scale) || 20);
+    const x = Number.isFinite(setting.exportX) ? setting.exportX : sheet.margin; const y = Number.isFinite(setting.exportY) ? setting.exportY : sheet.margin;
+    const width = (bounds.maxX - bounds.minX) / exportScale; const height = (bounds.maxY - bounds.minY) / exportScale;
+    if (x < 28 || y < 28 || x + width > sheet.width - 28 || y + height > sheet.height - 28) warnings.push({ type: 'view', view, message: `${viewNames[view]} liegt teilweise außerhalb des ${state.sheetFormat}-Exportblatts.` });
+  });
+  return warnings;
+}
+function renderProjectWarnings() {
+  const list = document.querySelector('#warningList'); const count = document.querySelector('#warningCount'); if (!list || !count) return;
+  const warnings = projectWarnings(); count.textContent = warnings.length; count.classList.toggle('has-warnings', warnings.length > 0); list.replaceChildren();
+  if (!warnings.length) { const clear = document.createElement('div'); clear.className = 'warning-clear'; clear.textContent = 'Keine Probleme gefunden.'; list.append(clear); return; }
+  warnings.forEach(warning => { const button = document.createElement('button'); button.type = 'button'; button.className = `warning-item ${warning.type}`; button.textContent = warning.message; button.addEventListener('click', () => { if (warning.objectId) selectObject(warning.objectId); else if (warning.view) setActiveView(warning.view); }); list.append(button); });
+}
 function enabledViews() {
   const views = Array.isArray(state.enabledViews) ? state.enabledViews.filter(view => viewNames[view]) : [];
   return views.length ? views : ['front'];
@@ -637,6 +682,42 @@ function setActiveView(view) {
   setDirty();
   setStatus(`${viewNames[view]} aktiv`);
 }
+function commandDefinitions() {
+  const toolCommands = Object.entries(toolNames).filter(([tool]) => tool !== 'angleDimension').map(([tool, name]) => ({ label: `Werkzeug: ${name}`, keywords: `zeichnen ${tool}`, run: () => setTool(tool) }));
+  const viewCommands = Object.entries(viewNames).map(([view, name]) => ({ label: `Ansicht: ${name}`, keywords: 'arbeitsansicht wechseln', run: () => setActiveView(view) }));
+  const layerCommands = state.layers.map(layer => ({ label: `Ebene aktivieren: ${layer.name}`, keywords: 'layer ebene', run: () => { state.activeLayer = layer.id; renderLayerControls(); setDirty(); setStatus(`${layer.name} aktiv`); } }));
+  return [
+    ...toolCommands, ...viewCommands, ...layerCommands,
+    { label: 'Datei: Neues Projekt', keywords: 'neu leeren', run: () => document.querySelector('#newProject').click() },
+    { label: 'Datei: Projekt laden', keywords: 'öffnen werkplan', run: () => fileInput.click() },
+    { label: 'Datei: Projekt speichern', keywords: 'speichern strg s', run: saveProject },
+    { label: 'Bearbeiten: Rückgängig', keywords: 'undo', run: undo },
+    { label: 'Bearbeiten: Wiederholen', keywords: 'redo', run: redo },
+    { label: 'Export: SVG', keywords: 'ausgabe', run: exportSheetSvg },
+    { label: 'Export: PNG', keywords: 'bild ausgabe', run: exportPng },
+    { label: 'Export: PDF', keywords: 'drucken ausgabe', run: exportPdf },
+    { label: 'Ansicht: Alles einpassen', keywords: 'zoom fit', run: fitAllObjects },
+    { label: 'Ansicht: Auswahl einpassen', keywords: 'zoom objekt fit', run: fitSelectedObject },
+    { label: 'Ansicht: Vergrößern', keywords: 'zoom plus', run: () => setViewportZoom(state.zoom * 1.2) },
+    { label: 'Ansicht: Verkleinern', keywords: 'zoom minus', run: () => setViewportZoom(state.zoom / 1.2) },
+    { label: 'Raster: Anzeige umschalten', keywords: 'grid sichtbar', run: () => document.querySelector('#gridToggle').click() },
+    { label: 'Raster: Einrasten umschalten', keywords: 'snap fangen', run: () => document.querySelector('#snapToggle').click() }
+  ];
+}
+function filteredCommands() {
+  const query = (document.querySelector('#commandSearch')?.value || '').trim().toLowerCase();
+  return commandDefinitions().filter(command => !query || `${command.label} ${command.keywords || ''}`.toLowerCase().includes(query)).slice(0, 14);
+}
+function renderCommandResults() {
+  const results = document.querySelector('#commandResults'); const commands = filteredCommands();
+  commandSelectionIndex = Math.max(0, Math.min(commandSelectionIndex, Math.max(0, commands.length - 1)));
+  results.replaceChildren();
+  if (!commands.length) { const empty = document.createElement('div'); empty.className = 'command-empty'; empty.textContent = 'Kein passender Befehl'; results.append(empty); return; }
+  commands.forEach((command, index) => { const button = document.createElement('button'); button.type = 'button'; button.className = index === commandSelectionIndex ? 'active' : ''; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', String(index === commandSelectionIndex)); button.textContent = command.label; button.addEventListener('mouseenter', () => { commandSelectionIndex = index; [...results.querySelectorAll('button')].forEach((item, itemIndex) => { item.classList.toggle('active', itemIndex === index); item.setAttribute('aria-selected', String(itemIndex === index)); }); }); button.addEventListener('click', () => executeCommand(index)); results.append(button); });
+}
+function openCommandPalette() { const palette = document.querySelector('#commandPalette'); palette.hidden = false; document.querySelector('#commandSearch').value = ''; commandSelectionIndex = 0; renderCommandResults(); requestAnimationFrame(() => document.querySelector('#commandSearch').focus()); }
+function closeCommandPalette() { document.querySelector('#commandPalette').hidden = true; }
+function executeCommand(index = commandSelectionIndex) { const command = filteredCommands()[index]; if (!command) return; closeCommandPalette(); command.run(); }
 function exportViewGroups() {
   const visible = state.objects.filter(isObjectPrintable);
   const grouped = new Map();
@@ -688,6 +769,7 @@ function syncScaleControls() {
 function updateScaleUi() {
   const effectiveScale = state.autoScale ? calculateAutoScale() : state.scale;
   document.querySelector('#scaleMeta').textContent = state.autoScale ? `Auto 1:${effectiveScale}` : `1:${state.scale}`;
+  document.querySelector('#sheetMeta').textContent = `${state.sheetFormat} ${state.sheetOrientation === 'portrait' ? 'hoch' : 'quer'}`;
   document.querySelector('#viewReferenceStatus').textContent = `${viewNames[state.activeView]}: Richtmaße werden pro Objekt gespeichert`;
   document.querySelector('#scaleDescription').textContent = state.autoScale ? `Der Exportmaßstab wird automatisch als 1:${effectiveScale} errechnet. Die Arbeitsfläche bleibt beim Zeichnen stabil.` : `Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:${state.scale} einem echten Maß von ${formatLength(100 * state.scale)}.`;
   document.querySelector('#gridStatus').textContent = `Raster ${formatLength(snapSize * state.scale)}`;
@@ -713,6 +795,12 @@ function rectFillAttrs(object) {
   if (object.fillMode === 'solid') return { fill: '#000000' };
   if (object.fillMode === 'hatch') return { fill: 'url(#hatchFill)' };
   if (object.fillMode === 'crosshatch') return { fill: 'url(#crossHatchFill)' };
+  if (object.fillMode === 'reverseHatch') return { fill: 'url(#reverseHatchFill)' };
+  if (object.fillMode === 'horizontalHatch') return { fill: 'url(#horizontalHatchFill)' };
+  if (object.fillMode === 'verticalHatch') return { fill: 'url(#verticalHatchFill)' };
+  if (object.fillMode === 'dots') return { fill: 'url(#dotHatchFill)' };
+  if (object.fillMode === 'brick') return { fill: 'url(#brickHatchFill)' };
+  if (object.fillMode === 'concrete') return { fill: 'url(#concreteHatchFill)' };
   return { fill: 'none' };
 }
 function appendDimensionEnds(group, attrs, ax, ay, bx, by, color) {
@@ -796,6 +884,7 @@ function render() {
   else if (selectedId) { const selected = state.objects.find(object => object.id === selectedId); if (selected) showProperties(selected); }
   renderHandles();
   renderObjectList();
+  renderProjectWarnings();
   updateHistoryControls();
 }
 function renderMaterialMarkers() {
@@ -1077,7 +1166,7 @@ function geometryFields(object) {
   if (object.type === 'ellipse' || object.type === 'ellipseArc') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label>Radius X ${unitInput('rx', object.rx, 'mm', 'min="1"')}</label><label>Radius Y ${unitInput('ry', object.ry, 'mm', 'min="1"')}</label>`;
   if (object.type === 'slot') return `<label>X1 ${unitInput('x1', object.x1)}</label><label>Y1 ${unitInput('y1', object.y1)}</label><label>X2 ${unitInput('x2', object.x2)}</label><label>Y2 ${unitInput('y2', object.y2)}</label><label class="wide-field">Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label>`;
   if (object.type === 'angleDimension') return `<label>X Mitte ${unitInput('cx', object.cx)}</label><label>Y Mitte ${unitInput('cy', object.cy)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label class="wide-field">Winkeltext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>`;
-  if (object.type === 'rect') return `<label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label><label>Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', object.height, 'mm', 'min="1"')}</label><label>Ecken<select name="cornerMode"><option value="square">Rechtwinklig</option><option value="chamfer">Fase</option><option value="round">Abrundung</option></select></label><label>Eckmaß ${unitInput('cornerSize', object.cornerSize || 0, 'mm', 'min="0"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none" ${!object.fillMode || object.fillMode === 'none' ? 'selected' : ''}>Keine</option><option value="solid" ${object.fillMode === 'solid' ? 'selected' : ''}>Vollfarbe schwarz</option><option value="hatch" ${object.fillMode === 'hatch' ? 'selected' : ''}>Schraffur</option><option value="crosshatch" ${object.fillMode === 'crosshatch' ? 'selected' : ''}>Kreuzschraffur</option></select></label>`;
+  if (object.type === 'rect') return `<label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label><label>Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', object.height, 'mm', 'min="1"')}</label><label>Ecken<select name="cornerMode"><option value="square">Rechtwinklig</option><option value="chamfer">Fase</option><option value="round">Abrundung</option></select></label><label>Eckmaß ${unitInput('cornerSize', object.cornerSize || 0, 'mm', 'min="0"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none">Keine</option><option value="solid">Vollfarbe schwarz</option><option value="hatch">Diagonal 45°</option><option value="reverseHatch">Diagonal -45°</option><option value="crosshatch">Kreuzschraffur</option><option value="horizontalHatch">Horizontal</option><option value="verticalHatch">Vertikal</option><option value="dots">Punktraster</option><option value="brick">Mauerwerk / Ziegel</option><option value="concrete">Beton</option></select></label>`;
   if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label>`;
   return '<div class="property-note">Dieses Objekt hat derzeit keine zusätzlichen Eigenschaften.</div>';
 }
@@ -1101,6 +1190,7 @@ function showProperties(object) {
   document.querySelector('[name="layer"]').value = objectLayer(object);
   document.querySelector('[name="locked"]').value = String(object.locked === true);
   if (object.type === 'rect') document.querySelector('[name="cornerMode"]').value = object.cornerMode || 'square';
+  if (object.type === 'rect') document.querySelector('[name="fillMode"]').value = object.fillMode || 'none';
   if (object.type === 'dimension' && document.querySelector('[name="dimensionUnit"]')) document.querySelector('[name="dimensionUnit"]').value = object.dimensionUnit || '';
   document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
   document.querySelector('#clearReference')?.addEventListener('click', clearSelectedReference);
@@ -1324,11 +1414,14 @@ function copySelected() {
   const linkedDimensions = state.objects.filter(object => object.type === 'dimension' && !selectedSourceIds.has(object.id) && (selectedSourceIds.has(object.sourceRectId) || selectedSourceIds.has(object.sourceObjectId)));
   const sources = [...objects, ...linkedDimensions];
   clipboard = JSON.parse(JSON.stringify(sources));
+  clipboardSourceScale = state.scale;
   setStatus(`${sources.length} Objekt(e) kopiert – Strg+V zum Einfügen`);
 }
 function pasteClipboardToView(targetView) {
   if (!clipboard || !viewNames[targetView]) { setStatus('Keine gültige Kopie oder Zielansicht'); return; }
   const sources = Array.isArray(clipboard) ? clipboard : [clipboard];
+  const targetScale = Math.max(1, Number(ensureViewSetting(targetView).scale) || 20);
+  const viewScaleFactor = targetScale / Math.max(1, Number(clipboardSourceScale) || state.scale || 20);
   const idMap = new Map(sources.map(source => [source.id, newId()]));
   const groupMap = new Map();
   pushHistory();
@@ -1336,6 +1429,9 @@ function pasteClipboardToView(targetView) {
     const copy = JSON.parse(JSON.stringify(source));
     copy.id = idMap.get(source.id);
     copy.view = targetView;
+    scaleObject(copy, viewScaleFactor);
+    if (copy.referenceScale?.factor) copy.referenceScale.factor /= viewScaleFactor;
+    else if (copy.type === 'line' || (copy.type === 'dimension' && !copy.sourceRectId && !copy.sourceObjectId)) copy.referenceScale = { factor: 1 / viewScaleFactor, targetLength: distance({ x: source.x1, y: source.y1 }, { x: source.x2, y: source.y2 }), side: 'length', copiedBetweenViews: true };
     if (copy.groupId) {
       if (!groupMap.has(copy.groupId)) groupMap.set(copy.groupId, `gruppe-${newId()}`);
       copy.groupId = groupMap.get(copy.groupId);
@@ -1352,7 +1448,7 @@ function pasteClipboardToView(targetView) {
   selectedIds = new Set(copies.map(copy => copy.id));
   selectedId = copies.at(-1)?.id || null;
   loadActiveViewSettings(); syncViewControls(); render();
-  setStatus(`${copies.length} Objekt(e) in ${viewNames[targetView]} eingefügt`);
+  setStatus(`${copies.length} Objekt(e) maßstabsgerecht in ${viewNames[targetView]} eingefügt`);
 }
 function addSelectedToMaterialList() {
   const object = state.objects.find(item => item.id === selectedId);
@@ -1984,6 +2080,9 @@ document.querySelector('#sheetFormat')?.addEventListener('change', event => { st
 document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; setDirty(); render(); setStatus('Blattausrichtung geändert'); });
 document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); setDirty(); render(); setStatus('Exportansichten geändert'); }));
 document.querySelectorAll('.view-button').forEach(button => button.addEventListener('click', () => setActiveView(button.dataset.view)));
+document.querySelector('#commandSearch').addEventListener('input', () => { commandSelectionIndex = 0; renderCommandResults(); });
+document.querySelector('#commandSearch').addEventListener('keydown', event => { const count = filteredCommands().length; if (event.key === 'ArrowDown') { event.preventDefault(); commandSelectionIndex = Math.min(count - 1, commandSelectionIndex + 1); renderCommandResults(); } if (event.key === 'ArrowUp') { event.preventDefault(); commandSelectionIndex = Math.max(0, commandSelectionIndex - 1); renderCommandResults(); } if (event.key === 'Enter') { event.preventDefault(); executeCommand(); } if (event.key === 'Escape') { event.preventDefault(); closeCommandPalette(); } });
+document.querySelector('#commandPalette').addEventListener('pointerdown', event => { if (event.target.id === 'commandPalette') closeCommandPalette(); });
 ['#objectSearch', '#objectTypeFilter', '#objectViewFilter', '#objectLayerFilter'].forEach(selector => document.querySelector(selector)?.addEventListener('input', renderObjectList));
 document.querySelector('#objectTypeFilter').innerHTML += Object.entries(toolNames).filter(([type]) => !['select','smartTrim','smartExtend'].includes(type)).map(([type, name]) => `<option value="${type}">${name}</option>`).join('');
 document.querySelector('#objectLayerFilter').innerHTML += state.layers.map(layer => `<option value="${layer.id}">${layer.name}</option>`).join('');
@@ -1993,7 +2092,7 @@ document.querySelector('#gridToggle').addEventListener('change', event => { stat
 document.querySelector('#snapToggle').addEventListener('change', event => { state.snap = event.target.checked; setDirty(); });
 document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); setDirty(); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
 document.querySelector('#activeLayer')?.addEventListener('change', event => { state.activeLayer = event.target.value; setDirty(); renderLayerControls(); });
-['#viewExportX', '#viewExportY'].forEach((selector, index) => document.querySelector(selector)?.addEventListener('change', event => { const value = event.target.value === '' ? null : Number(event.target.value); ensureViewSetting()[index === 0 ? 'exportX' : 'exportY'] = Number.isFinite(value) ? value : null; setDirty(); }));
+['#viewExportX', '#viewExportY'].forEach((selector, index) => document.querySelector(selector)?.addEventListener('change', event => { const value = event.target.value === '' ? null : Number(event.target.value); ensureViewSetting()[index === 0 ? 'exportX' : 'exportY'] = Number.isFinite(value) ? value : null; setDirty(); renderProjectWarnings(); }));
 document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; state.viewSettings = {}; state.layers.forEach(layer => { layer.visible = true; layer.locked = false; layer.printable = layer.id !== 'guide'; }); state.activeLayer = 'contour'; document.querySelector('#projectName').value = state.projectName; loadActiveViewSettings(); syncViewControls(); renderLayerControls(); renderMaterialList(); selectedId = null; selectedIds.clear(); render(); setDirty(false); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
@@ -2012,6 +2111,7 @@ canvas.addEventListener('wheel', event => { event.preventDefault(); setViewportZ
 canvas.addEventListener('pointerdown', handlePointerDown); canvas.addEventListener('pointermove', handlePointerMove); canvas.addEventListener('pointerup', handlePointerUp); canvas.addEventListener('pointerleave', () => { if (!panStart) { pointerStart = null; draggingHandle = null; updateLiveAngle(null, null); clearPreview(); } });
 document.addEventListener('keyup', event => { if (event.code === 'Space') { spacePressed = false; canvas.classList.remove('pan-ready'); } });
 document.addEventListener('keydown', event => { if (event.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') { event.preventDefault(); spacePressed = true; canvas.classList.add('pan-ready'); } if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); saveProject(); } const notEditing = document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'; if (event.ctrlKey && event.key.toLowerCase() === 'c' && notEditing) { event.preventDefault(); copySelected(); } if (event.ctrlKey && event.key.toLowerCase() === 'v' && notEditing) { event.preventDefault(); pasteClipboard(); } if (event.ctrlKey && event.key.toLowerCase() === 'z' && notEditing) { event.preventDefault(); undo(); } if (event.ctrlKey && event.key.toLowerCase() === 'y' && notEditing) { event.preventDefault(); redo(); } if (notEditing && event.key >= '1' && event.key <= '7') setTool(toolOrder[Number(event.key) - 1]); if (notEditing && event.key === 'Delete') deleteSelected(); if (event.key === 'Escape') { pointerStart = null; draggingHandle = null; panStart = null; canvas.classList.remove('panning'); polylinePoints = []; updateLiveAngle(null, null); clearPreview(); } });
+document.addEventListener('keydown', event => { if (event.ctrlKey && event.key.toLowerCase() === 'k') { event.preventDefault(); openCommandPalette(); } });
 document.querySelector('#projectDate').value = state.projectDate;
 document.querySelector('#sheetFormat').value = state.sheetFormat;
 document.querySelector('#sheetOrientation').value = state.sheetOrientation;
