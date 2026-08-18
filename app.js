@@ -6,6 +6,27 @@ const statusText = document.querySelector('#statusText');
 const propertyPanel = document.querySelector('#propertyPanel');
 const fileInput = document.querySelector('#fileInput');
 const documentTitle = document.title;
+const themeStorageKey = 'werkplan-theme';
+
+function preferredTheme() {
+  const stored = localStorage.getItem(themeStorageKey);
+  if (stored === 'dark' || stored === 'light') return stored;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function applyTheme(theme, persist = false) {
+  const dark = theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  const toggle = document.querySelector('#themeToggle');
+  if (toggle) {
+    toggle.textContent = dark ? '☀' : '☾';
+    toggle.title = dark ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren';
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.setAttribute('aria-pressed', String(dark));
+  }
+  if (persist) localStorage.setItem(themeStorageKey, dark ? 'dark' : 'light');
+}
+applyTheme(preferredTheme());
 
 const state = {
   tool: 'select', style: 'solid', strokeWidth: 0.75, strokeColor: '#263238',
@@ -717,7 +738,7 @@ function setActiveView(view) {
   setStatus(`${viewNames[view]} aktiv`);
 }
 function commandDefinitions() {
-  const toolCommands = Object.entries(toolNames).filter(([tool]) => tool !== 'angleDimension').map(([tool, name]) => ({ label: `Werkzeug: ${name}`, keywords: `zeichnen ${tool}`, run: () => setTool(tool) }));
+  const toolCommands = Object.entries(toolNames).filter(([tool]) => !['angleDimension', 'polyline', 'ellipse', 'ellipseArc'].includes(tool)).map(([tool, name]) => ({ label: `Werkzeug: ${name}`, keywords: `zeichnen ${tool}`, run: () => setTool(tool) }));
   const viewCommands = Object.entries(viewNames).map(([view, name]) => ({ label: `Ansicht: ${name}`, keywords: 'arbeitsansicht wechseln', run: () => setActiveView(view) }));
   const layerCommands = state.layers.map(layer => ({ label: `Ebene aktivieren: ${layer.name}`, keywords: 'layer ebene', run: () => { state.activeLayer = layer.id; renderLayerControls(); setDirty(); setStatus(`${layer.name} aktiv`); } }));
   return [
@@ -2195,6 +2216,7 @@ document.querySelector('#activeLayer')?.addEventListener('change', event => { st
 ['#viewExportX', '#viewExportY'].forEach((selector, index) => document.querySelector(selector)?.addEventListener('change', event => { const value = event.target.value === '' ? null : Number(event.target.value); ensureViewSetting()[index === 0 ? 'exportX' : 'exportY'] = Number.isFinite(value) ? value : null; setDirty(); renderProjectWarnings(); }));
 document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; state.viewSettings = {}; state.exportScaleMode = 'auto'; state.exportScale = 10; state.layers.forEach(layer => { layer.visible = true; layer.locked = false; layer.printable = layer.id !== 'guide'; }); state.activeLayer = 'contour'; document.querySelector('#projectName').value = state.projectName; loadActiveViewSettings(); syncViewControls(); syncExportScaleControls(); renderLayerControls(); renderMaterialList(); selectedId = null; selectedIds.clear(); render(); setDirty(false); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
+document.querySelector('#themeToggle').addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true));
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
 document.querySelector('#undoAction')?.addEventListener('click', undo);
 document.querySelector('#redoAction')?.addEventListener('click', redo);

@@ -2,7 +2,7 @@
 
 Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vollständig offline im Browser und benötigt weder Installation noch Server.
 
-![Werkplan mit technischer Zeichnung](Screenshot%202026-08-18%20111535.png)
+![Werkplan mit technischer Zeichnung](Screenshot.png)
 
 ## Start unter Windows 11
 
@@ -10,7 +10,7 @@ Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vol
 
 ## Funktionsübersicht
 
-- Technische Grundformen, Polylinien, Texte und Bemaßungen
+- Technische Grundformen, Texte und Bemaßungen
 - Objektfang mit End-, Mittel-, Schnitt-, Quadrant- und Tangentialpunkten
 - Vier getrennte Arbeitsansichten mit eigenem Zoom und Maßstab
 - Objekt- und achsenbezogene Richtmaße ohne Veränderung der Geometrie
@@ -48,8 +48,6 @@ Klicken, Text eingeben, Enter zum Bestätigen.
 
 ### Weitere Formen
 
-- **Polylinie**: Punkte nacheinander anklicken, mit Doppelklick abschließen
-- **Ellipse / Ellipsenbogen**: Mittelpunkt anklicken und beide Radien durch Ziehen bestimmen
 - **Langloch**: Mittellinie ziehen; die Breite kann über das exakte Höhenfeld vorgegeben werden
 - **Polygon**: Mittelpunkt anklicken und Radius ziehen; die Seitenzahl wird links eingestellt
 - **Fase / Abrundung**: Rechteck auswählen und unter Eigenschaften Eckenart und Eckmaß einstellen
@@ -130,6 +128,12 @@ Für ein Objekt in einer anderen Arbeitsansicht zuerst oberhalb der Zeichenfläc
 - **Leertaste und linke Maustaste ziehen**: Zeichenfläche verschieben
 - **Alles**: Alle Objekte der aktiven Ansicht einpassen
 - **Auswahl**: Das ausgewählte Objekt einpassen
+
+## Helles und dunkles Design
+
+Das Sonnen-/Mondsymbol in der Kopfzeile schaltet zwischen hellem und dunklem Design um. Beim ersten Start übernimmt Werkplan die Systemeinstellung des Browsers; eine manuelle Auswahl wird lokal gespeichert und beim nächsten Öffnen wiederhergestellt.
+
+Im dunklen Design werden Kopfzeile, Seitenleisten, Werkzeugflächen, Formulare, Kontextmenü und Befehlssuche abgedunkelt. Die Zeichenfläche erhält einen neutralen grauen Hintergrund mit angepasstem Raster und dunklen Maßtexten. SVG-, PNG- und PDF-Exporte bleiben unabhängig vom Oberflächendesign hell.
 
 ## Befehlssuche
 
