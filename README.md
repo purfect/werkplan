@@ -2,6 +2,8 @@
 
 Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vollständig offline im Browser und benötigt weder Installation noch Server.
 
+![Werkplan mit technischer Zeichnung](Screenshot%202026-08-18%20111535.png)
+
 ## Start unter Windows 11
 
 `Start-Zeichenprogramm.bat` doppelklicken oder `index.html` im Browser öffnen.
