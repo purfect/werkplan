@@ -24,6 +24,8 @@ state.sheetOrientation = 'landscape';
 state.enabledViews = ['front'];
 state.activeView = 'front';
 state.viewReferences = {};
+state.exportScaleMode = 'auto';
+state.exportScale = 10;
 state.layers = [
   { id: 'contour', name: 'Kontur', visible: true, locked: false, printable: true },
   { id: 'axis', name: 'Achsen', visible: true, locked: false, printable: true },
@@ -45,6 +47,7 @@ let dragHistoryCaptured = false;
 let polylinePoints = [];
 let clipboard = null;
 let clipboardSourceScale = 20;
+let clipboardSourceCalibration = 1;
 let currentSnap = null;
 let angleReferenceId = null;
 let viewBox = { x: 0, y: 0, width: 1200, height: 760 };
@@ -79,6 +82,14 @@ function syncViewSettingControls() {
   if (x) x.value = Number.isFinite(setting.exportX) ? setting.exportX : '';
   if (y) y.value = Number.isFinite(setting.exportY) ? setting.exportY : '';
 }
+function syncExportScaleControls() {
+  const select = document.querySelector('#exportScaleSelect'); const wrap = document.querySelector('#customExportScaleWrap'); const input = document.querySelector('#customExportScale'); const status = document.querySelector('#exportScaleStatus');
+  if (!select || !wrap || !input || !status) return;
+  if (state.exportScaleMode === 'auto') { select.value = 'auto'; wrap.hidden = true; status.textContent = 'Wird beim Export automatisch passend berechnet.'; }
+  else {
+    const preset = [...select.options].some(option => option.value === String(state.exportScale)); select.value = preset ? String(state.exportScale) : 'custom'; wrap.hidden = preset; input.value = state.exportScale; status.textContent = `Fest eingestellt: 1:${trimNumber(state.exportScale)}`;
+  }
+}
 function updateSheetFromState() {
   const landscape = state.sheetOrientation !== 'portrait';
   if (state.sheetFormat === 'A4') { sheet.width = landscape ? 900 : 640; sheet.height = landscape ? 640 : 900; }
@@ -88,6 +99,14 @@ function sheetSizeMm() {
   const landscape = state.sheetOrientation !== 'portrait';
   if (state.sheetFormat === 'A4') return landscape ? { w: 297, h: 210 } : { w: 210, h: 297 };
   return landscape ? { w: 420, h: 297 } : { w: 297, h: 420 };
+}
+function viewCalibrationFactor(view = state.activeView) {
+  const factor = Number(state.viewReferences[view]?.factor);
+  return Number.isFinite(factor) && factor > 0 ? factor : 1;
+}
+function drawingScale(view = state.activeView) {
+  const viewScale = view === state.activeView ? state.scale : Number(ensureViewSetting(view).scale) || state.scale;
+  return viewScale / viewCalibrationFactor(view);
 }
 
 function makeSvg(tag, attrs = {}) {
@@ -122,24 +141,24 @@ function addFillPatterns(root) {
 }
 function distance(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
 function polarPoint(center, radius, angle) { return { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius }; }
-function semicirclePath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+function semicirclePath(object, scale = drawingScale(), offsetX = 0, offsetY = 0) {
   const radius = object.r / scale;
   const center = { x: object.x / scale + offsetX, y: object.y / scale + offsetY };
   const start = polarPoint(center, radius, object.angle || 0);
   const end = polarPoint(center, radius, (object.angle || 0) + Math.PI);
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 1 ${end.x} ${end.y}`;
 }
-function ellipseArcPath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+function ellipseArcPath(object, scale = drawingScale(), offsetX = 0, offsetY = 0) {
   const cx = object.x / scale + offsetX; const cy = object.y / scale + offsetY;
   const rx = object.rx / scale; const ry = object.ry / scale;
   return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx + rx} ${cy}`;
 }
-function slotPath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+function slotPath(object, scale = drawingScale(), offsetX = 0, offsetY = 0) {
   const x1 = object.x1 / scale + offsetX; const y1 = object.y1 / scale + offsetY; const x2 = object.x2 / scale + offsetX; const y2 = object.y2 / scale + offsetY;
   const radius = object.width / scale / 2; const angle = Math.atan2(y2 - y1, x2 - x1); const nx = -Math.sin(angle) * radius; const ny = Math.cos(angle) * radius;
   return `M ${x1 + nx} ${y1 + ny} L ${x2 + nx} ${y2 + ny} A ${radius} ${radius} 0 0 1 ${x2 - nx} ${y2 - ny} L ${x1 - nx} ${y1 - ny} A ${radius} ${radius} 0 0 1 ${x1 + nx} ${y1 + ny} Z`;
 }
-function rectShapePath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+function rectShapePath(object, scale = drawingScale(), offsetX = 0, offsetY = 0) {
   const x = object.x / scale + offsetX; const y = object.y / scale + offsetY; const width = object.width / scale; const height = object.height / scale;
   const size = Math.min(Number(object.cornerSize) || 0, object.width / 2, object.height / 2) / scale;
   if (object.cornerMode === 'chamfer' && size > 0) return `M ${x + size} ${y} H ${x + width - size} L ${x + width} ${y + size} V ${y + height - size} L ${x + width - size} ${y + height} H ${x + size} L ${x} ${y + height - size} V ${y + size} Z`;
@@ -280,7 +299,7 @@ function objectSnapResult(point, origin = null) {
     }
     if (object.type === 'ellipse' || object.type === 'ellipseArc') [{ x: object.x + object.rx, y: object.y }, { x: object.x - object.rx, y: object.y }, { x: object.x, y: object.y + object.ry }, { x: object.x, y: object.y - object.ry }].forEach(quadrant => addPointCandidate(candidates, point, quadrant, 'Quadrant'));
   });
-  const threshold = Math.max(150, state.scale * 12);
+  const threshold = Math.max(150, drawingScale() * 12);
   const priority = { Endpunkt: 0, Schnittpunkt: 1, Quadrant: 2, Tangente: 3, Mittelpunkt: 4, Lotpunkt: 5, Senkrecht: 6, Parallel: 7, Verlängerung: 8, Kante: 9 };
   const best = candidates.sort((a, b) => a.distance - b.distance || (priority[a.type] ?? 9) - (priority[b.type] ?? 9))[0];
   return best && best.distance <= threshold ? best : { point, type: null, distance: 0 };
@@ -293,8 +312,9 @@ function eventPoint(event, objectSnap = false, snapOrigin = null) {
   const y = viewBox.y + (event.clientY - rect.top) / rect.height * viewBox.height;
   const snappedX = state.snap ? Math.round(x / snapSize) * snapSize : x;
   const snappedY = state.snap ? Math.round(y / snapSize) * snapSize : y;
-  const rawPoint = { x: x * state.scale, y: y * state.scale };
-  const gridPoint = { x: snappedX * state.scale, y: snappedY * state.scale };
+  const scale = drawingScale();
+  const rawPoint = { x: x * scale, y: y * scale };
+  const gridPoint = { x: snappedX * scale, y: snappedY * scale };
   currentSnap = null;
   if (!objectSnap) return gridPoint;
   const snapped = objectSnapResult(rawPoint, snapOrigin);
@@ -304,8 +324,9 @@ function eventPoint(event, objectSnap = false, snapOrigin = null) {
 }
 function toolUsesObjectSnap() { return ['line', 'dimension', 'polyline', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(state.tool); }
 function constrainedEndPoint(start, current) {
-  const len = Number(document.querySelector('#targetLength')?.value);
-  if (!len || len <= 0) return current;
+  const realLength = Number(document.querySelector('#targetLength')?.value);
+  if (!realLength || realLength <= 0) return current;
+  const len = modelLength(realLength);
   const dx = current.x - start.x;
   const dy = current.y - start.y;
   const d = Math.hypot(dx, dy);
@@ -335,7 +356,7 @@ function angleDimensionLabel(object) {
   if (object.labelOverride) return String(object.labelOverride);
   return formatAngle(Math.abs(shortestAngleDelta(object.startAngle || 0, object.endAngle || 0)) * 180 / Math.PI);
 }
-function angleArcPath(object, scale = state.scale, offsetX = 0, offsetY = 0) {
+function angleArcPath(object, scale = drawingScale(), offsetX = 0, offsetY = 0) {
   const radius = Math.max(1, object.r || 500) / scale;
   const center = { x: object.cx / scale + offsetX, y: object.cy / scale + offsetY };
   const start = polarPoint(center, radius, object.startAngle || 0);
@@ -348,7 +369,7 @@ function updateLiveAngle(start, end) {
   if (!output) return;
   output.textContent = start && end ? formatAngle(angleDegrees(start, end)) : '-';
 }
-function canvasValue(value) { return value / state.scale; }
+function canvasValue(value) { return value / drawingScale(); }
 function formatLength(value) { return value >= 1000 ? `${(value / 1000).toFixed(2).replace('.', ',')} m` : `${Math.round(value)} mm`; }
 function dimensionStyle() {
   return state.dimensionStyle || { endStyle: 'arrow', textSize: 14, defaultOffset: 22, unit: 'auto', decimals: 0 };
@@ -356,26 +377,23 @@ function dimensionStyle() {
 function formatDimensionLength(value, options = {}) {
   const style = dimensionStyle();
   const decimalsSource = options.decimals ?? style.decimals;
-  const decimals = Math.max(0, Math.min(3, Number(decimalsSource) || 0));
   const unitSetting = options.unit || style.unit || 'auto';
   const unit = unitSetting === 'auto' ? (value >= 1000 ? 'm' : 'mm') : unitSetting;
+  const decimals = Math.max(unit === 'm' ? 1 : 0, Math.min(3, Number(decimalsSource) || 0));
   const displayValue = unit === 'm' ? value / 1000 : unit === 'cm' ? value / 10 : value;
   return `${displayValue.toFixed(decimals).replace('.', ',')} ${unit}`;
 }
 function objectReferenceFactor(object, side = null) {
-  if (!object) return 1;
-  const directFactor = Number(object.referenceScale?.factor);
-  const directSideMatches = !side || !object.referenceScale?.side || object.referenceScale.side === 'length' || object.referenceScale.side === side;
-  if (directSideMatches && Number.isFinite(directFactor) && directFactor > 0) return directFactor;
-  const sourceId = object.sourceObjectId || object.sourceRectId;
-  const source = sourceId ? state.objects.find(item => item.id === sourceId) : null;
-  const sourceFactor = Number(source?.referenceScale?.factor);
-  const dimensionSide = object.autoRectSide || side;
-  const sourceSideMatches = !dimensionSide || !source?.referenceScale?.side || source.referenceScale.side === 'length' || source.referenceScale.side === dimensionSide;
-  return sourceSideMatches && Number.isFinite(sourceFactor) && sourceFactor > 0 ? sourceFactor : 1;
+  const view = object ? objectView(object) : state.activeView;
+  const factor = Number(state.viewReferences[view]?.factor);
+  return Number.isFinite(factor) && factor > 0 ? factor : 1;
 }
 function calibratedLength(value, object = null, side = null) {
   return value * objectReferenceFactor(object, side);
+}
+function modelLength(realLength, view = state.activeView) {
+  const factor = Number(state.viewReferences[view]?.factor);
+  return realLength / (Number.isFinite(factor) && factor > 0 ? factor : 1);
 }
 function dimensionLabelText(object, measuredLength) {
   if (object.labelOverride) return String(object.labelOverride);
@@ -415,10 +433,10 @@ function linkedObjectText(item) {
 }
 function materialDimensionsFromObject(object) {
   if (!object) return '';
-  if (object.type === 'line') return formatLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }));
-  if (object.type === 'rect') return `${formatLength(object.width)} x ${formatLength(object.height)}`;
-  if (object.type === 'circle') return `Ø ${formatLength(object.r * 2)}`;
-  if (object.type === 'semicircle') return `R ${formatLength(object.r)}`;
+  if (object.type === 'line') return formatLength(calibratedLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }), object));
+  if (object.type === 'rect') return `${formatLength(calibratedLength(object.width, object))} x ${formatLength(calibratedLength(object.height, object))}`;
+  if (object.type === 'circle') return `Ø ${formatLength(calibratedLength(object.r * 2, object))}`;
+  if (object.type === 'semicircle') return `R ${formatLength(calibratedLength(object.r, object))}`;
   return objectSummary(object);
 }
 function trimNumber(value) {
@@ -435,15 +453,16 @@ function calculatedMaterialQuantity(item) {
   let value = null;
   if (item.unit === 'St') value = count;
   if (item.unit === 'm') {
-    if (object.type === 'line') value = distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) / 1000 * count;
-    if (object.type === 'rect') value = (object.width + object.height) * 2 / 1000 * count;
-    if (object.type === 'circle') value = 2 * Math.PI * object.r / 1000 * count;
-    if (object.type === 'semicircle') value = (Math.PI * object.r + object.r * 2) / 1000 * count;
+    if (object.type === 'line') value = calibratedLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }), object) / 1000 * count;
+    if (object.type === 'rect') value = calibratedLength((object.width + object.height) * 2, object) / 1000 * count;
+    if (object.type === 'circle') value = calibratedLength(2 * Math.PI * object.r, object) / 1000 * count;
+    if (object.type === 'semicircle') value = calibratedLength(Math.PI * object.r + object.r * 2, object) / 1000 * count;
   }
   if (item.unit === 'm2') {
-    if (object.type === 'rect') value = object.width * object.height / 1000000 * count;
-    if (object.type === 'circle') value = Math.PI * object.r * object.r / 1000000 * count;
-    if (object.type === 'semicircle') value = Math.PI * object.r * object.r / 2000000 * count;
+    const factor = viewCalibrationFactor(objectView(object));
+    if (object.type === 'rect') value = object.width * object.height * factor * factor / 1000000 * count;
+    if (object.type === 'circle') value = Math.PI * object.r * object.r * factor * factor / 1000000 * count;
+    if (object.type === 'semicircle') value = Math.PI * object.r * object.r * factor * factor / 2000000 * count;
   }
   return value === null ? '' : trimNumber(value);
 }
@@ -538,7 +557,7 @@ function objectBounds(object) {
   if (object.type === 'line') return { minX: Math.min(object.x1, object.x2), minY: Math.min(object.y1, object.y2), maxX: Math.max(object.x1, object.x2), maxY: Math.max(object.y1, object.y2) };
   if (object.type === 'dimension') {
     const dx = object.x2 - object.x1; const dy = object.y2 - object.y1; const length = Math.hypot(dx, dy) || 1;
-    const offset = (Number.isFinite(Number(object.offset)) ? Number(object.offset) : dimensionStyle().defaultOffset) * state.scale;
+    const offset = (Number.isFinite(Number(object.offset)) ? Number(object.offset) : dimensionStyle().defaultOffset) * drawingScale(objectView(object));
     const normal = { x: -dy / length, y: dx / length };
     const points = [
       { x: object.x1, y: object.y1 },
@@ -583,6 +602,14 @@ function boundsForObjects(objects, padding = 0) {
     maxX: Math.max(...boxes.map(box => box.maxX)) + padding,
     maxY: Math.max(...boxes.map(box => box.maxY)) + padding
   };
+}
+function exportBoundsForObjects(objects, padding = 0) {
+  const boxes = objects.map(object => {
+    if (object.type === 'dimension') return { minX: Math.min(object.x1, object.x2), minY: Math.min(object.y1, object.y2), maxX: Math.max(object.x1, object.x2), maxY: Math.max(object.y1, object.y2) };
+    return objectBounds(object);
+  }).filter(Boolean);
+  if (!boxes.length) return null;
+  return { minX: Math.min(...boxes.map(box => box.minX)) - padding, minY: Math.min(...boxes.map(box => box.minY)) - padding, maxX: Math.max(...boxes.map(box => box.maxX)) + padding, maxY: Math.max(...boxes.map(box => box.maxY)) + padding };
 }
 function objectView(object) {
   return viewNames[object.view] ? object.view : 'front';
@@ -631,13 +658,20 @@ function projectWarnings() {
   enabledViews().forEach(view => {
     const setting = ensureViewSetting(view); const hasManualPosition = Number.isFinite(setting.exportX) || Number.isFinite(setting.exportY);
     if (!hasManualPosition) return;
-    const objects = state.objects.filter(object => objectView(object) === view && isObjectPrintable(object)); const bounds = boundsForObjects(objects);
+    const objects = state.objects.filter(object => objectView(object) === view && isObjectPrintable(object)); const bounds = exportBoundsForObjects(objects);
     if (!bounds) return;
-    const exportScale = setting.autoScale !== false ? calculateRequiredExportScale(bounds) : Math.max(1, Number(setting.scale) || 20);
+    const requiredScale = calculateRequiredExportScale(bounds) * viewCalibrationFactor(view);
+    const requestedScale = setting.autoScale !== false ? 1 : Math.max(1, Number(setting.scale) || 20);
+    const exportScale = Math.max(requiredScale, requestedScale);
     const x = Number.isFinite(setting.exportX) ? setting.exportX : sheet.margin; const y = Number.isFinite(setting.exportY) ? setting.exportY : sheet.margin;
-    const width = (bounds.maxX - bounds.minX) / exportScale; const height = (bounds.maxY - bounds.minY) / exportScale;
+    const calibrationFactor = viewCalibrationFactor(view);
+    const width = (bounds.maxX - bounds.minX) * calibrationFactor / exportScale; const height = (bounds.maxY - bounds.minY) * calibrationFactor / exportScale;
     if (x < 28 || y < 28 || x + width > sheet.width - 28 || y + height > sheet.height - 28) warnings.push({ type: 'view', view, message: `${viewNames[view]} liegt teilweise außerhalb des ${state.sheetFormat}-Exportblatts.` });
   });
+  if (state.exportScaleMode === 'manual') {
+    const requiredScale = calculateCommonExportRequirement(exportViewGroups());
+    if (state.exportScale + 0.001 < requiredScale) warnings.push({ type: 'view', message: `Der manuelle Exportmaßstab 1:${trimNumber(state.exportScale)} ist zu groß für den Inhalt. Mindestens 1:${trimNumber(Math.ceil(requiredScale * 10) / 10)} wird benötigt.` });
+  }
   return warnings;
 }
 function renderProjectWarnings() {
@@ -745,7 +779,7 @@ function calculateAutoScale() {
   updateMaterialsFromForm();
   const bounds = boundsForObjects(activeViewObjects(), 500);
   if (!bounds) return state.scale || 20;
-  const required = calculateRequiredExportScale(bounds);
+  const required = calculateRequiredExportScale(bounds) * viewCalibrationFactor();
   return scaleSteps.find(step => step >= required) || Math.ceil(required / 1000) * 1000;
 }
 function updateAutoScale() {
@@ -770,7 +804,8 @@ function updateScaleUi() {
   const effectiveScale = state.autoScale ? calculateAutoScale() : state.scale;
   document.querySelector('#scaleMeta').textContent = state.autoScale ? `Auto 1:${effectiveScale}` : `1:${state.scale}`;
   document.querySelector('#sheetMeta').textContent = `${state.sheetFormat} ${state.sheetOrientation === 'portrait' ? 'hoch' : 'quer'}`;
-  document.querySelector('#viewReferenceStatus').textContent = `${viewNames[state.activeView]}: Richtmaße werden pro Objekt gespeichert`;
+  const reference = state.viewReferences[state.activeView];
+  document.querySelector('#viewReferenceStatus').textContent = reference ? `${viewNames[state.activeView]} kalibriert: × ${trimNumber(reference.factor)}` : `${viewNames[state.activeView]}: nicht kalibriert`;
   document.querySelector('#scaleDescription').textContent = state.autoScale ? `Der Exportmaßstab wird automatisch als 1:${effectiveScale} errechnet. Die Arbeitsfläche bleibt beim Zeichnen stabil.` : `Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:${state.scale} einem echten Maß von ${formatLength(100 * state.scale)}.`;
   document.querySelector('#gridStatus').textContent = `Raster ${formatLength(snapSize * state.scale)}`;
 }
@@ -836,9 +871,10 @@ function renderObject(object, layer = drawingLayer) {
     const style = dimensionStyle();
     const radius = Math.max(1, object.r || 500);
     const center = { x: canvasValue(object.cx), y: canvasValue(object.cy) };
-    const start = polarPoint(center, radius / state.scale, object.startAngle || 0);
-    const end = polarPoint(center, radius / state.scale, (object.startAngle || 0) + shortestAngleDelta(object.startAngle || 0, object.endAngle || 0));
-    const mid = polarPoint(center, (radius + 180) / state.scale, (object.startAngle || 0) + shortestAngleDelta(object.startAngle || 0, object.endAngle || 0) / 2);
+    const scale = drawingScale();
+    const start = polarPoint(center, radius / scale, object.startAngle || 0);
+    const end = polarPoint(center, radius / scale, (object.startAngle || 0) + shortestAngleDelta(object.startAngle || 0, object.endAngle || 0));
+    const mid = polarPoint(center, (radius + 180) / scale, (object.startAngle || 0) + shortestAngleDelta(object.startAngle || 0, object.endAngle || 0) / 2);
     element = makeSvg('g', { class: 'dimension-object' });
     element.append(
       makeSvg('line', { ...attrs, x1: center.x, y1: center.y, x2: start.x, y2: start.y }),
@@ -964,10 +1000,11 @@ function fitCanvasBounds(bounds) {
     return;
   }
   const padding = 45;
-  let minX = bounds.minX / state.scale - padding;
-  let minY = bounds.minY / state.scale - padding;
-  let width = Math.max(20, (bounds.maxX - bounds.minX) / state.scale + padding * 2);
-  let height = Math.max(20, (bounds.maxY - bounds.minY) / state.scale + padding * 2);
+  const scale = drawingScale();
+  let minX = bounds.minX / scale - padding;
+  let minY = bounds.minY / scale - padding;
+  let width = Math.max(20, (bounds.maxX - bounds.minX) / scale + padding * 2);
+  let height = Math.max(20, (bounds.maxY - bounds.minY) / scale + padding * 2);
   const aspect = 1200 / 760;
   if (width / height > aspect) {
     const nextHeight = width / aspect;
@@ -989,13 +1026,13 @@ function fitSelectedObject() {
   setStatus('Auswahl eingepasst');
 }
 function objectSummary(object) {
-  if (object.type === 'line') return formatLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }));
+  if (object.type === 'line') return formatLength(calibratedLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }), object));
   if (object.type === 'dimension') return dimensionLabelText(object, distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }));
   if (object.type === 'angleDimension') return angleDimensionLabel(object);
-  if (object.type === 'rect') return `${formatLength(object.width)} x ${formatLength(object.height)}`;
-  if (object.type === 'circle' || object.type === 'semicircle') return `R ${formatLength(object.r)}`;
-  if (object.type === 'ellipse' || object.type === 'ellipseArc') return `${formatLength(object.rx * 2)} x ${formatLength(object.ry * 2)}`;
-  if (object.type === 'slot') return `${formatLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) + object.width)} x ${formatLength(object.width)}`;
+  if (object.type === 'rect') return `${formatLength(calibratedLength(object.width, object))} x ${formatLength(calibratedLength(object.height, object))}`;
+  if (object.type === 'circle' || object.type === 'semicircle') return `R ${formatLength(calibratedLength(object.r, object))}`;
+  if (object.type === 'ellipse' || object.type === 'ellipseArc') return `${formatLength(calibratedLength(object.rx * 2, object))} x ${formatLength(calibratedLength(object.ry * 2, object))}`;
+  if (object.type === 'slot') return `${formatLength(calibratedLength(distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) + object.width, object))} x ${formatLength(calibratedLength(object.width, object))}`;
   if (object.type === 'polygon') return `${object.points.length}-Eck`;
   if (object.type === 'text') return object.value || 'Text';
   return 'Objekt';
@@ -1136,8 +1173,8 @@ function applyAngleConstraint(start, current, event) {
 function exactRectEndPoint(start, current) {
   const widthInput = document.querySelector('#targetRectWidth')?.value;
   const heightInput = document.querySelector('#targetRectHeight')?.value;
-  const width = Number(widthInput);
-  const height = Number(heightInput);
+  const width = modelLength(Number(widthInput));
+  const height = modelLength(Number(heightInput));
   if (widthInput === '' || heightInput === '') return current;
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return current;
   return { x: start.x + width * (current.x < start.x ? -1 : 1), y: start.y + height * (current.y < start.y ? -1 : 1) };
@@ -1160,24 +1197,25 @@ function unitInput(name, value, unit = 'mm', attrs = '') {
   return `<span class="unit-input"><input name="${name}" type="number" step="1" value="${value}" ${attrs}><span>${unit}</span></span>`;
 }
 function geometryFields(object) {
-  if (object.type === 'line' || object.type === 'dimension') return `<label>X1 ${unitInput('x1', object.x1)}</label><label>Y1 ${unitInput('y1', object.y1)}</label><label>X2 ${unitInput('x2', object.x2)}</label><label>Y2 ${unitInput('y2', object.y2)}</label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand ${unitInput('offset', Number.isFinite(Number(object.offset)) ? object.offset : dimensionStyle().defaultOffset, 'px')}</label><label>Einheit<select name="dimensionUnit"><option value="">Global</option><option value="auto">Auto</option><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label><label>Nachkommastellen<input name="dimensionDecimals" type="number" min="0" max="3" step="1" value="${object.dimensionDecimals ?? ''}" placeholder="${dimensionStyle().decimals}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
-  if (object.type === 'circle') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label class="wide-field">Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label>`;
-  if (object.type === 'semicircle') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label>Winkel ${unitInput('angleDeg', Math.round(((object.angle || 0) * 180 / Math.PI + 360) % 360), '°')}</label>`;
-  if (object.type === 'ellipse' || object.type === 'ellipseArc') return `<label>X Mitte ${unitInput('x', object.x)}</label><label>Y Mitte ${unitInput('y', object.y)}</label><label>Radius X ${unitInput('rx', object.rx, 'mm', 'min="1"')}</label><label>Radius Y ${unitInput('ry', object.ry, 'mm', 'min="1"')}</label>`;
-  if (object.type === 'slot') return `<label>X1 ${unitInput('x1', object.x1)}</label><label>Y1 ${unitInput('y1', object.y1)}</label><label>X2 ${unitInput('x2', object.x2)}</label><label>Y2 ${unitInput('y2', object.y2)}</label><label class="wide-field">Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label>`;
-  if (object.type === 'angleDimension') return `<label>X Mitte ${unitInput('cx', object.cx)}</label><label>Y Mitte ${unitInput('cy', object.cy)}</label><label>Radius ${unitInput('r', object.r, 'mm', 'min="1"')}</label><label class="wide-field">Winkeltext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>`;
-  if (object.type === 'rect') return `<label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label><label>Breite ${unitInput('width', object.width, 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', object.height, 'mm', 'min="1"')}</label><label>Ecken<select name="cornerMode"><option value="square">Rechtwinklig</option><option value="chamfer">Fase</option><option value="round">Abrundung</option></select></label><label>Eckmaß ${unitInput('cornerSize', object.cornerSize || 0, 'mm', 'min="0"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none">Keine</option><option value="solid">Vollfarbe schwarz</option><option value="hatch">Diagonal 45°</option><option value="reverseHatch">Diagonal -45°</option><option value="crosshatch">Kreuzschraffur</option><option value="horizontalHatch">Horizontal</option><option value="verticalHatch">Vertikal</option><option value="dots">Punktraster</option><option value="brick">Mauerwerk / Ziegel</option><option value="concrete">Beton</option></select></label>`;
-  if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X ${unitInput('x', object.x)}</label><label>Y ${unitInput('y', object.y)}</label>`;
+  const real = value => calibratedLength(value, object);
+  if (object.type === 'line' || object.type === 'dimension') return `<label>X1 ${unitInput('x1', real(object.x1))}</label><label>Y1 ${unitInput('y1', real(object.y1))}</label><label>X2 ${unitInput('x2', real(object.x2))}</label><label>Y2 ${unitInput('y2', real(object.y2))}</label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand ${unitInput('offset', Number.isFinite(Number(object.offset)) ? object.offset : dimensionStyle().defaultOffset, 'px')}</label><label>Einheit<select name="dimensionUnit"><option value="">Global</option><option value="auto">Auto</option><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label><label>Nachkommastellen<input name="dimensionDecimals" type="number" min="0" max="3" step="1" value="${object.dimensionDecimals ?? ''}" placeholder="${dimensionStyle().decimals}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
+  if (object.type === 'circle') return `<label>X Mitte ${unitInput('x', real(object.x))}</label><label>Y Mitte ${unitInput('y', real(object.y))}</label><label class="wide-field">Radius ${unitInput('r', real(object.r), 'mm', 'min="1"')}</label>`;
+  if (object.type === 'semicircle') return `<label>X Mitte ${unitInput('x', real(object.x))}</label><label>Y Mitte ${unitInput('y', real(object.y))}</label><label>Radius ${unitInput('r', real(object.r), 'mm', 'min="1"')}</label><label>Winkel ${unitInput('angleDeg', Math.round(((object.angle || 0) * 180 / Math.PI + 360) % 360), '°')}</label>`;
+  if (object.type === 'ellipse' || object.type === 'ellipseArc') return `<label>X Mitte ${unitInput('x', real(object.x))}</label><label>Y Mitte ${unitInput('y', real(object.y))}</label><label>Radius X ${unitInput('rx', real(object.rx), 'mm', 'min="1"')}</label><label>Radius Y ${unitInput('ry', real(object.ry), 'mm', 'min="1"')}</label>`;
+  if (object.type === 'slot') return `<label>X1 ${unitInput('x1', real(object.x1))}</label><label>Y1 ${unitInput('y1', real(object.y1))}</label><label>X2 ${unitInput('x2', real(object.x2))}</label><label>Y2 ${unitInput('y2', real(object.y2))}</label><label class="wide-field">Breite ${unitInput('width', real(object.width), 'mm', 'min="1"')}</label>`;
+  if (object.type === 'angleDimension') return `<label>X Mitte ${unitInput('cx', real(object.cx))}</label><label>Y Mitte ${unitInput('cy', real(object.cy))}</label><label>Radius ${unitInput('r', real(object.r), 'mm', 'min="1"')}</label><label class="wide-field">Winkeltext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>`;
+  if (object.type === 'rect') return `<label>X ${unitInput('x', real(object.x))}</label><label>Y ${unitInput('y', real(object.y))}</label><label>Breite ${unitInput('width', real(object.width), 'mm', 'min="1"')}</label><label>Höhe ${unitInput('height', real(object.height), 'mm', 'min="1"')}</label><label>Ecken<select name="cornerMode"><option value="square">Rechtwinklig</option><option value="chamfer">Fase</option><option value="round">Abrundung</option></select></label><label>Eckmaß ${unitInput('cornerSize', real(object.cornerSize || 0), 'mm', 'min="0"')}</label><label class="wide-field">Füllung<select name="fillMode"><option value="none">Keine</option><option value="solid">Vollfarbe schwarz</option><option value="hatch">Diagonal 45°</option><option value="reverseHatch">Diagonal -45°</option><option value="crosshatch">Kreuzschraffur</option><option value="horizontalHatch">Horizontal</option><option value="verticalHatch">Vertikal</option><option value="dots">Punktraster</option><option value="brick">Mauerwerk / Ziegel</option><option value="concrete">Beton</option></select></label>`;
+  if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X ${unitInput('x', real(object.x))}</label><label>Y ${unitInput('y', real(object.y))}</label>`;
   return '<div class="property-note">Dieses Objekt hat derzeit keine zusätzlichen Eigenschaften.</div>';
 }
 function showProperties(object) {
   document.querySelector('#selectionCount').textContent = '1 ausgewählt';
   const measuredLength = object.type === 'line' || object.type === 'dimension' ? distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) : 0;
-  const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(measuredLength) : object.type === 'rect' ? `${formatLength(object.width)} x ${formatLength(object.height)}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(object.r)}` : objectSummary(object);
+  const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(calibratedLength(measuredLength, object)) : object.type === 'rect' ? `${formatLength(calibratedLength(object.width, object))} x ${formatLength(calibratedLength(object.height, object))}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(calibratedLength(object.r, object))}` : objectSummary(object);
   const rectHasAutoDimensions = object.type === 'rect' && state.objects.some(item => item.type === 'dimension' && item.sourceRectId === object.id);
   const referenceViewName = viewNames[objectView(object)];
-  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß dieses Objekts</summary><span>Kalibriert nur dieses Objekt und seine verknüpften Bemaßungen. Geometrie und Ansicht bleiben unverändert.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(measuredLength || 1800, object))}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß dieses Objekts</summary><span>Kalibriert nur die ausgewählte Rechteckachse: Höhe oder Breite. Die jeweils andere Achse bleibt unverändert.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(object.height || 1800, object, 'height'))}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
-  const referenceResetControl = object.referenceScale ? '<button id="clearReference" class="copy-button">Richtmaß dieses Objekts entfernen</button>' : '';
+  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Kalibriert alle Maße und exakten Eingaben dieser Ansicht. Bestehende Geometrie bleibt unverändert.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(measuredLength || 1800, object))}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Breite oder Höhe dient als bekannte Strecke für alle Maße und exakten Eingaben dieser Ansicht.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(object.height || 1800, object, 'height'))}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
+  const referenceResetControl = state.viewReferences[objectView(object)] ? '<button id="clearReference" class="copy-button">Richtmaß dieser Ansicht entfernen</button>' : '';
   const rectControls = '';
   const circleControls = object.type === 'circle' || object.type === 'semicircle' ? `<button id="addRadiusDimension" class="copy-button">Radius bemaßen</button><button id="addDiameterDimension" class="copy-button">Durchmesser bemaßen</button>` : '';
   const angleControls = object.type === 'line' ? `<button id="rememberAngleLine" class="copy-button">Linie 1 merken</button><button id="addAngleDimension" class="copy-button">Winkel zu Linie 1</button>` : '';
@@ -1357,24 +1395,33 @@ function setSelectedAsReference() {
   if (object.type === 'line' || object.type === 'dimension') currentLength = distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 });
   if (object.type === 'rect') currentLength = document.querySelector('#referenceRectSide')?.value === 'width' ? object.width : object.height;
   if (currentLength < 0.001) { setStatus('Richtmaß benötigt eine vorhandene Länge'); return; }
+  const view = objectView(object);
+  const previousDrawingScale = drawingScale(view);
   const factor = targetLength / currentLength;
-  const referenceSide = object.type === 'rect' ? document.querySelector('#referenceRectSide')?.value : 'length';
-  object.referenceScale = { targetLength, factor, side: referenceSide, updatedAt: new Date().toISOString() };
+  state.viewReferences[view] = { targetLength, factor, sourceObjectId: object.id, updatedAt: new Date().toISOString() };
+  state.scale = previousDrawingScale * factor;
+  const setting = ensureViewSetting(view); setting.scale = state.scale; setting.autoScale = false; state.autoScale = false;
   setDirty();
-  render();
-  setStatus(`Richtmaß für ${object.name || toolNames[object.type] || 'Objekt'} auf ${formatLength(targetLength)} gesetzt`);
+  syncScaleControls(); render();
+  setStatus(`${viewNames[view]} auf ${formatLength(targetLength)} kalibriert`);
 }
 function clearSelectedReference() {
-  const object = state.objects.find(item => item.id === selectedId); if (!object?.referenceScale) return;
-  delete object.referenceScale; setDirty(); render(); setStatus('Richtmaß dieses Objekts entfernt');
+  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  const view = objectView(object); if (!state.viewReferences[view]) return;
+  const previousDrawingScale = drawingScale(view);
+  delete state.viewReferences[view]; state.scale = previousDrawingScale;
+  const setting = ensureViewSetting(view); setting.scale = state.scale; setting.autoScale = false; state.autoScale = false;
+  setDirty(); syncScaleControls(); render(); setStatus(`Richtmaß der ${viewNames[view]} entfernt`);
 }
 function applySelectedChanges() {
   const object = state.objects.find(item => item.id === selectedId);
   if (!object) return;
   const form = propertyPanel.querySelector('.property-form');
   const values = Object.fromEntries([...form.querySelectorAll('[name]')].map(input => [input.name, input.value]));
+  const calibrationFactor = viewCalibrationFactor(objectView(object));
   pushHistory();
   Object.keys(values).forEach(key => { object[key] = ['strokeWidth', 'x', 'y', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'offset', 'r', 'rx', 'ry', 'cornerSize', 'angleDeg', 'dimensionDecimals'].includes(key) && values[key] !== '' ? Number(values[key]) : values[key]; });
+  ['x', 'y', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'width', 'height', 'r', 'rx', 'ry', 'cornerSize'].forEach(key => { if (Object.hasOwn(values, key) && Number.isFinite(object[key])) object[key] /= calibrationFactor; });
   object.locked = values.locked === 'true';
   if (object.type === 'semicircle' && Number.isFinite(object.angleDeg)) { object.angle = object.angleDeg * Math.PI / 180; delete object.angleDeg; }
   if ((object.type === 'dimension' || object.type === 'angleDimension') && !String(object.labelOverride || '').trim()) delete object.labelOverride;
@@ -1415,13 +1462,17 @@ function copySelected() {
   const sources = [...objects, ...linkedDimensions];
   clipboard = JSON.parse(JSON.stringify(sources));
   clipboardSourceScale = state.scale;
+  clipboardSourceCalibration = viewCalibrationFactor();
   setStatus(`${sources.length} Objekt(e) kopiert – Strg+V zum Einfügen`);
 }
 function pasteClipboardToView(targetView) {
   if (!clipboard || !viewNames[targetView]) { setStatus('Keine gültige Kopie oder Zielansicht'); return; }
   const sources = Array.isArray(clipboard) ? clipboard : [clipboard];
-  const targetScale = Math.max(1, Number(ensureViewSetting(targetView).scale) || 20);
-  const viewScaleFactor = targetScale / Math.max(1, Number(clipboardSourceScale) || state.scale || 20);
+  const targetSetting = ensureViewSetting(targetView);
+  targetSetting.scale = Math.max(1, Number(clipboardSourceScale) || 20);
+  targetSetting.autoScale = false;
+  const targetCalibration = viewCalibrationFactor(targetView);
+  const viewScaleFactor = clipboardSourceCalibration / targetCalibration;
   const idMap = new Map(sources.map(source => [source.id, newId()]));
   const groupMap = new Map();
   pushHistory();
@@ -1430,8 +1481,6 @@ function pasteClipboardToView(targetView) {
     copy.id = idMap.get(source.id);
     copy.view = targetView;
     scaleObject(copy, viewScaleFactor);
-    if (copy.referenceScale?.factor) copy.referenceScale.factor /= viewScaleFactor;
-    else if (copy.type === 'line' || (copy.type === 'dimension' && !copy.sourceRectId && !copy.sourceObjectId)) copy.referenceScale = { factor: 1 / viewScaleFactor, targetLength: distance({ x: source.x1, y: source.y1 }, { x: source.x2, y: source.y2 }), side: 'length', copiedBetweenViews: true };
     if (copy.groupId) {
       if (!groupMap.has(copy.groupId)) groupMap.set(copy.groupId, `gruppe-${newId()}`);
       copy.groupId = groupMap.get(copy.groupId);
@@ -1448,7 +1497,7 @@ function pasteClipboardToView(targetView) {
   selectedIds = new Set(copies.map(copy => copy.id));
   selectedId = copies.at(-1)?.id || null;
   loadActiveViewSettings(); syncViewControls(); render();
-  setStatus(`${copies.length} Objekt(e) maßstabsgerecht in ${viewNames[targetView]} eingefügt`);
+  setStatus(`${copies.length} Objekt(e) größengetreu in ${viewNames[targetView]} eingefügt`);
 }
 function addSelectedToMaterialList() {
   const object = state.objects.find(item => item.id === selectedId);
@@ -1541,7 +1590,7 @@ function handlePointerDown(event) {
   if (state.tool === 'smartTrim' || state.tool === 'smartExtend') { smartEditLineAt(point, state.tool === 'smartTrim' ? 'trim' : 'extend'); return; }
   if (state.tool === 'select') {
     const hitObject = activeViewObjects().find(object => {
-      const hitThreshold = Math.max(12, state.scale * 12);
+      const hitThreshold = Math.max(12, drawingScale() * 12);
       if (object.type === 'line' || object.type === 'dimension') {
         return distanceToLine(point, object.x1, object.y1, object.x2, object.y2) <= hitThreshold;
       }
@@ -1602,7 +1651,7 @@ function handlePointerMove(event) {
     return;
   }
   const snapOrigin = pointerStart || polylinePoints.at(-1) || null;
-  const point = eventPoint(event, !draggingObject && toolUsesObjectSnap(), snapOrigin); document.querySelector('#cursorCoords').textContent = `X ${formatLength(point.x)}   Y ${formatLength(point.y)}`;
+  const point = eventPoint(event, !draggingObject && toolUsesObjectSnap(), snapOrigin); document.querySelector('#cursorCoords').textContent = `X ${formatLength(point.x * viewCalibrationFactor())}   Y ${formatLength(point.y * viewCalibrationFactor())}`;
   if (selectionBoxStart && state.tool === 'select') {
     clearPreview();
     const x = Math.min(selectionBoxStart.x, point.x); const y = Math.min(selectionBoxStart.y, point.y);
@@ -1626,7 +1675,7 @@ function handlePointerMove(event) {
       const lineDy = draggingObject.y2 - draggingObject.y1;
       const lineLength = Math.hypot(lineDx, lineDy) || 1;
       const normal = { x: -lineDy / lineLength, y: lineDx / lineLength };
-      draggingObject.offset = (Number.isFinite(Number(draggingObject.offset)) ? Number(draggingObject.offset) : dimensionStyle().defaultOffset) + (dx / state.scale) * normal.x + (dy / state.scale) * normal.y;
+      draggingObject.offset = (Number.isFinite(Number(draggingObject.offset)) ? Number(draggingObject.offset) : dimensionStyle().defaultOffset) + (dx / drawingScale()) * normal.x + (dy / drawingScale()) * normal.y;
     } else draggingObjects.forEach(object => translateObject(object, dx, dy));
     dragChanged = true;
     pointerStart = point;
@@ -1775,6 +1824,20 @@ function renderExportMaterialMarkers(layer, bounds, exportScale, objects = state
     layer.append(group);
   });
 }
+function calculateCommonExportRequirement(groups = exportViewGroups()) {
+  if (!groups.length) return 1;
+  const gap = groups.length > 1 ? 28 : 0; const labelHeight = groups.length > 1 ? 24 : 0;
+  const slotWidth = (sheet.width - sheet.margin * 2 - gap * (groups.length - 1)) / groups.length;
+  const usableHeight = Math.max(120, exportDrawingAreaHeight() - labelHeight);
+  return Math.max(1, ...groups.map(group => {
+    const factor = viewCalibrationFactor(group.view); const rawBounds = exportBoundsForObjects(group.objects);
+    if (!rawBounds) return 1;
+    const realExtent = Math.max(rawBounds.maxX - rawBounds.minX, rawBounds.maxY - rawBounds.minY) * factor;
+    const paddingMm = Math.min(500, Math.max(150, realExtent * 0.08));
+    const bounds = exportBoundsForObjects(group.objects, paddingMm / factor);
+    return calculateRequiredExportScale(bounds, slotWidth, usableHeight) * factor;
+  }));
+}
 function renderExportViews(root) {
   const groups = exportViewGroups();
   if (!groups.length) return state.autoScale ? calculateAutoScale() : state.scale;
@@ -1785,29 +1848,46 @@ function renderExportViews(root) {
   const areaHeight = exportDrawingAreaHeight();
   const slotWidth = (totalWidth - gap * (groups.length - 1)) / groups.length;
   const viewLayouts = groups.map((group, index) => {
-    const bounds = boundsForObjects(group.objects, 500);
     const setting = ensureViewSetting(group.view);
+    const calibrationFactor = viewCalibrationFactor(group.view);
+    const rawBounds = exportBoundsForObjects(group.objects);
+    const realExtent = rawBounds ? Math.max(rawBounds.maxX - rawBounds.minX, rawBounds.maxY - rawBounds.minY) * calibrationFactor : 0;
+    const paddingMm = Math.min(500, Math.max(150, realExtent * 0.08));
+    const bounds = exportBoundsForObjects(group.objects, paddingMm / calibrationFactor);
     const x = Number.isFinite(setting.exportX) ? setting.exportX : sheet.margin + index * (slotWidth + gap);
     const y = Number.isFinite(setting.exportY) ? setting.exportY : sheet.margin + labelHeight;
     const usableHeight = Math.max(120, areaHeight - labelHeight);
-    const requiredScale = bounds ? calculateRequiredExportScale(bounds, slotWidth, usableHeight) : 1;
-    return { ...group, bounds, x, y, usableHeight, requiredScale, setting };
+    const requiredScale = bounds ? calculateRequiredExportScale(bounds, slotWidth, usableHeight) * calibrationFactor : 1;
+    return { ...group, bounds, x, y, usableHeight, requiredScale, setting, calibrationFactor };
   });
   const filledLayouts = viewLayouts.filter(layout => layout.bounds);
-  const usedScales = [];
-  viewLayouts.forEach(group => {
+  const minimumCommonScale = Math.max(1, ...filledLayouts.map(layout => layout.requiredScale));
+  const commonScale = state.exportScaleMode === 'manual' ? Math.max(1, Number(state.exportScale) || 1) : Math.max(1, Math.ceil(minimumCommonScale));
+  viewLayouts.forEach((group, groupIndex) => {
     if (groups.length > 1) {
       addTableText(drawing, group.x, sheet.margin + 15, viewNames[group.view], { 'font-size': 13, 'font-weight': 700, fill: '#263238' });
       drawing.append(makeSvg('rect', { x: group.x, y: group.y, width: slotWidth, height: group.usableHeight, fill: 'none', stroke: '#d6dfdd', 'stroke-width': 0.7, 'stroke-dasharray': '5 5' }));
     }
     if (!group.bounds) return;
-    const exportScale = group.setting.autoScale !== false ? (scaleSteps.find(step => step >= group.requiredScale) || Math.ceil(group.requiredScale / 1000) * 1000) : Math.max(1, Number(group.setting.scale) || 20);
-    usedScales.push(exportScale);
-    group.objects.forEach(object => renderExportObject(object, drawing, group.bounds, exportScale, group.x, group.y));
-    renderExportMaterialMarkers(drawing, group.bounds, exportScale, group.objects, group.x, group.y);
+    const clipId = `viewClip-${group.view}`;
+    const clipPath = makeSvg('clipPath', { id: clipId });
+    const clipPaddingX = groups.length > 1 ? gap / 2 : 22;
+    const clipX = groupIndex === 0 ? 28 : Math.max(28, group.x - clipPaddingX);
+    const clipRight = groupIndex === viewLayouts.length - 1 ? sheet.width - 28 : Math.min(sheet.width - 28, group.x + slotWidth + clipPaddingX);
+    clipPath.append(makeSvg('rect', { x: clipX, y: Math.max(28, group.y - 12), width: clipRight - clipX, height: group.usableHeight + 12 }));
+    drawing.append(clipPath);
+    const viewLayer = makeSvg('g', { class: 'export-view-content', 'data-view': group.view, 'clip-path': `url(#${clipId})` });
+    const coordinateScale = commonScale / group.calibrationFactor;
+    const renderedWidth = (group.bounds.maxX - group.bounds.minX) / coordinateScale;
+    const renderedHeight = (group.bounds.maxY - group.bounds.minY) / coordinateScale;
+    const contentX = group.x + Math.max(0, (slotWidth - renderedWidth) / 2);
+    const contentY = group.y + Math.max(0, (group.usableHeight - renderedHeight) / 2);
+    group.objects.forEach(object => renderExportObject(object, viewLayer, group.bounds, coordinateScale, contentX, contentY));
+    renderExportMaterialMarkers(viewLayer, group.bounds, coordinateScale, group.objects, contentX, contentY);
+    drawing.append(viewLayer);
   });
   root.append(drawing);
-  return [...new Set(usedScales)].join(' / 1:') || state.scale;
+  return commonScale || state.scale;
 }
 function addTitleCell(root, x, y, width, height, label, value) {
   root.append(makeSvg('rect', { x, y, width, height, fill: 'none', stroke: '#263238', 'stroke-width': 1 }));
@@ -1885,7 +1965,7 @@ function buildSheetSvg() {
   const titleX = sheet.width - sheet.margin - 540; const titleY = sheet.height - sheet.margin - sheet.titleHeight;
   root.append(makeSvg('rect', { x: titleX, y: titleY, width: 540, height: sheet.titleHeight, fill: '#fffdf8', stroke: '#263238', 'stroke-width': 1.2 }));
   addTitleCell(root, titleX, titleY, 270, 59, 'Projekt', state.projectName);
-  addTitleCell(root, titleX + 270, titleY, 135, 59, 'Massstab', `1:${exportScale}`);
+  addTitleCell(root, titleX + 270, titleY, 135, 59, 'Massstab', `1:${trimNumber(Number(exportScale))}`);
   addTitleCell(root, titleX + 405, titleY, 135, 59, 'Einheit', 'mm');
   addTitleCell(root, titleX, titleY + 59, 180, 59, 'Zeichnung', state.drawingNumber);
   addTitleCell(root, titleX + 180, titleY + 59, 150, 59, 'Bearbeiter', state.drawnBy);
@@ -1997,7 +2077,7 @@ saveProject = function() {
   saveActiveViewSettings();
   const data = {
     app: 'Werkplan',
-    version: 9,
+    version: 13,
     unit: 'mm',
     projectName: state.projectName,
     drawingNumber: state.drawingNumber,
@@ -2005,7 +2085,7 @@ saveProject = function() {
     projectDate: state.projectDate,
     materials: state.materials,
     objects: state.objects,
-    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView, viewReferences: state.viewReferences, layers: state.layers, activeLayer: state.activeLayer, viewSettings: state.viewSettings }
+    settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView, viewReferences: state.viewReferences, layers: state.layers, activeLayer: state.activeLayer, viewSettings: state.viewSettings, exportScaleMode: state.exportScaleMode, exportScale: state.exportScale }
   };
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${fileBaseName()}.werkplan`);
   setDirty(false);
@@ -2033,18 +2113,29 @@ loadProject = function(file) {
       state.autoScale = data.settings?.autoScale ?? true;
       state.sheetFormat = data.settings?.sheetFormat || 'A3';
       state.sheetOrientation = data.settings?.sheetOrientation || 'landscape';
+      state.exportScaleMode = data.settings?.exportScaleMode === 'manual' ? 'manual' : 'auto';
+      state.exportScale = Number(data.settings?.exportScale) > 0 ? Number(data.settings.exportScale) : 10;
       state.enabledViews = Array.isArray(data.settings?.enabledViews) ? data.settings.enabledViews.filter(view => viewNames[view]) : ['front'];
       state.activeView = viewNames[data.settings?.activeView] ? data.settings.activeView : state.enabledViews[0];
       state.viewReferences = data.settings?.viewReferences && typeof data.settings.viewReferences === 'object' ? data.settings.viewReferences : {};
       if (Number(data.version) < 7) Object.values(state.viewReferences).forEach(reference => { reference.factor = 1; });
       if (Number(data.version) < 8) state.viewReferences = {};
+      if (Number(data.version) < 10) state.objects.forEach(object => {
+        const factor = Number(object.referenceScale?.factor); const view = objectView(object);
+        if (!state.viewReferences[view] && !object.referenceScale?.copiedBetweenViews && Number.isFinite(factor) && factor > 0) state.viewReferences[view] = { factor, targetLength: object.referenceScale.targetLength, sourceObjectId: object.id, migrated: true };
+      });
       if (Array.isArray(data.settings?.layers)) state.layers = data.settings.layers;
       state.activeLayer = data.settings?.activeLayer || state.layers[0].id;
       state.viewSettings = data.settings?.viewSettings && typeof data.settings.viewSettings === 'object' ? data.settings.viewSettings : {};
+      if (Number(data.version) < 12) Object.entries(state.viewReferences).forEach(([view, reference]) => {
+        const factor = Number(reference?.factor); const setting = state.viewSettings[view];
+        if (setting && Number.isFinite(factor) && factor > 0) { setting.scale = (Number(setting.scale) || 20) * factor; setting.autoScale = false; }
+      });
       document.querySelector('#sheetFormat').value = state.sheetFormat;
       document.querySelector('#sheetOrientation').value = state.sheetOrientation;
       syncViewControls();
       renderLayerControls();
+      syncExportScaleControls();
       state.dimensionStyle = data.settings?.dimensionStyle || state.dimensionStyle;
       syncDimensionStyleControls();
       state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 20;
@@ -2078,6 +2169,15 @@ document.querySelector('#scaleSelect').addEventListener('change', event => { if 
 document.querySelector('#customScale').addEventListener('change', event => setScale(event.target.value));
 document.querySelector('#sheetFormat')?.addEventListener('change', event => { state.sheetFormat = event.target.value; setDirty(); render(); setStatus('Blattformat geändert'); });
 document.querySelector('#sheetOrientation')?.addEventListener('change', event => { state.sheetOrientation = event.target.value; setDirty(); render(); setStatus('Blattausrichtung geändert'); });
+document.querySelector('#exportScaleSelect').addEventListener('change', event => {
+  if (event.target.value === 'custom') {
+    state.exportScaleMode = 'manual'; document.querySelector('#customExportScaleWrap').hidden = false; document.querySelector('#exportScaleStatus').textContent = 'Eigenen Nenner eingeben.'; document.querySelector('#customExportScale').focus(); setDirty(); renderProjectWarnings(); return;
+  }
+  if (event.target.value === 'auto') state.exportScaleMode = 'auto';
+  else { state.exportScaleMode = 'manual'; state.exportScale = Number(event.target.value); }
+  setDirty(); syncExportScaleControls(); renderProjectWarnings();
+});
+document.querySelector('#customExportScale').addEventListener('change', event => { const value = Number(event.target.value); if (Number.isFinite(value) && value >= 1) { state.exportScaleMode = 'manual'; state.exportScale = value; setDirty(); syncExportScaleControls(); renderProjectWarnings(); } });
 document.querySelectorAll('.view-toggle').forEach(input => input.addEventListener('change', () => { updateViewsFromControls(); setDirty(); render(); setStatus('Exportansichten geändert'); }));
 document.querySelectorAll('.view-button').forEach(button => button.addEventListener('click', () => setActiveView(button.dataset.view)));
 document.querySelector('#commandSearch').addEventListener('input', () => { commandSelectionIndex = 0; renderCommandResults(); });
@@ -2093,7 +2193,7 @@ document.querySelector('#snapToggle').addEventListener('change', event => { stat
 document.querySelector('#addMaterialRow')?.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); updateMaterialsFromForm(); state.materials.push(defaultMaterialRow()); setDirty(); renderMaterialList(); setStatus('Materialposition hinzugefügt'); });
 document.querySelector('#activeLayer')?.addEventListener('change', event => { state.activeLayer = event.target.value; setDirty(); renderLayerControls(); });
 ['#viewExportX', '#viewExportY'].forEach((selector, index) => document.querySelector(selector)?.addEventListener('change', event => { const value = event.target.value === '' ? null : Number(event.target.value); ensureViewSetting()[index === 0 ? 'exportX' : 'exportY'] = Number.isFinite(value) ? value : null; setDirty(); renderProjectWarnings(); }));
-document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; state.viewSettings = {}; state.layers.forEach(layer => { layer.visible = true; layer.locked = false; layer.printable = layer.id !== 'guide'; }); state.activeLayer = 'contour'; document.querySelector('#projectName').value = state.projectName; loadActiveViewSettings(); syncViewControls(); renderLayerControls(); renderMaterialList(); selectedId = null; selectedIds.clear(); render(); setDirty(false); setStatus('Neue Zeichnung'); });
+document.querySelector('#newProject').addEventListener('click', () => { if ((state.objects.length || state.materials.length) && !window.confirm('Neue Zeichnung beginnen und aktuelle Arbeit verwerfen?')) return; state.objects = []; state.materials = []; state.history = []; state.redo = []; state.projectName = 'Projekt01'; state.enabledViews = ['front']; state.activeView = 'front'; state.viewReferences = {}; state.viewSettings = {}; state.exportScaleMode = 'auto'; state.exportScale = 10; state.layers.forEach(layer => { layer.visible = true; layer.locked = false; layer.printable = layer.id !== 'guide'; }); state.activeLayer = 'contour'; document.querySelector('#projectName').value = state.projectName; loadActiveViewSettings(); syncViewControls(); syncExportScaleControls(); renderLayerControls(); renderMaterialList(); selectedId = null; selectedIds.clear(); render(); setDirty(false); setStatus('Neue Zeichnung'); });
 document.querySelector('#saveProject').addEventListener('click', saveProject);
 document.querySelector('#openProject').addEventListener('click', () => fileInput.click());
 document.querySelector('#undoAction')?.addEventListener('click', undo);
@@ -2119,6 +2219,7 @@ document.querySelector('#sheetOrientation').value = state.sheetOrientation;
 syncViewControls();
 renderLayerControls();
 syncViewSettingControls();
+syncExportScaleControls();
 syncDimensionStyleControls();
 renderMaterialList();
 syncScaleControls();
