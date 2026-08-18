@@ -1,10 +1,20 @@
 # Werkplan
 
-Kleines lokales Zeichenprogramm fuer technische Entwurfszeichnungen.
+Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vollständig offline im Browser und benötigt weder Installation noch Server.
 
 ## Start unter Windows 11
 
-`Start-Zeichenprogramm.bat` doppelklicken oder `index.html` im Browser oeffnen. Es wird keine Installation und kein Server benoetigt.
+`Start-Zeichenprogramm.bat` doppelklicken oder `index.html` im Browser öffnen.
+
+## Funktionsübersicht
+
+- Technische Grundformen, Polylinien, Texte und Bemaßungen
+- Objektfang mit End-, Mittel-, Schnitt-, Quadrant- und Tangentialpunkten
+- Vier getrennte Arbeitsansichten mit eigenem Zoom und Maßstab
+- Objekt- und achsenbezogene Richtmaße ohne Veränderung der Geometrie
+- Ebenen, Mehrfachauswahl, Gruppen und Objektinspektor
+- Materialliste mit Objektverknüpfungen
+- Speicherung als `.werkplan` sowie Export als SVG, PNG und PDF
 
 ## Werkzeuge
 
@@ -78,14 +88,22 @@ Jede Ansicht speichert ihren eigenen Zoom, Bildausschnitt, Darstellungsmaßstab 
 
 ### Ein Richtmaß setzen
 
-1. Mit dem Linienwerkzeug eine bekannte Strecke zeichnen.
-2. Das Objekt mit dem Auswahlwerkzeug anklicken.
-3. Rechts im Bereich **Richtmaß festlegen** die echte Länge eintragen, zum Beispiel `1800 mm`.
+1. Eine Linie, Bemaßung oder ein Rechteck auswählen.
+2. Bei einem Rechteck **Breite** oder **Höhe** als Bezugsachse wählen.
+3. Im Bereich **Richtmaß dieses Objekts** die gewünschte reale Länge eintragen, zum Beispiel `1800 mm`.
 4. **Übernehmen** klicken.
 
-Nur die Bemaßungswerte der zugehörigen Ansicht werden kalibriert. Objektgeometrie, Positionen, Zeichnungsgröße, Zoom und Bildausschnitt bleiben vollständig unverändert. Eine auf 1,8 m gesetzte Referenzlinie bewirkt, dass alle Bemaßungen derselben Ansicht mit diesem Verhältnis beschriftet werden. Frontansicht, Seitenansicht, Draufsicht und Detail können unabhängig voneinander kalibriert werden.
+Richtmaße werden pro Objekt gespeichert. Bei Rechtecken gilt das Verhältnis nur für die ausgewählte Achse:
 
-Zum Kalibrieren einer weiteren Ansicht diese unter **Aktive Ansicht** auswählen, dort eine Linie oder ein Rechteck markieren und ein eigenes Richtmaß übernehmen. Unter der Auswahl der aktiven Ansicht wird das zuletzt gesetzte Richtmaß angezeigt.
+- Ein **Höhenrichtmaß** verändert ausschließlich die Höhenbemaßung.
+- Ein **Breitenrichtmaß** verändert ausschließlich die Breitenbemaßung.
+- Die andere Achse und alle anderen Objekte bleiben unverändert.
+- Verknüpfte automatische Bemaßungen übernehmen das Richtmaß ihres Quellobjekts.
+- Ohne Richtmaß zeigt eine automatische Bemaßung das exakte Objektmaß, beispielsweise `100 mm` als `10 cm`.
+
+Richtmaße verändern niemals Objektgeometrie, Position, Zoom oder Bildausschnitt. Über **Richtmaß dieses Objekts entfernen** wird wieder das unveränderte Objektmaß angezeigt.
+
+Für ein Objekt in einer anderen Arbeitsansicht zuerst oberhalb der Zeichenfläche auf **Front**, **Seite**, **Drauf** oder **Detail** wechseln und dort das betreffende Objekt auswählen.
 
 ## Navigation
 
@@ -97,7 +115,9 @@ Zum Kalibrieren einer weiteren Ansicht diese unter **Aktive Ansicht** auswählen
 
 ## Speichern und Export
 
-Ein Stern vor dem Fenstertitel zeigt ungespeicherte Änderungen an. Projektdateien verwenden ab Version 4 auch gedrehte Objekte, ab Version 5 getrennte Richtmaße, ab Version 6 Ebenen, Gruppen, neue Grundformen sowie Ansichtseinstellungen und ab Version 7 rein visuelle Bemaßungskalibrierungen ohne Geometrieänderung. Beim PDF-Export stehen die ersten sechs Materialpositionen auf dem Zeichnungsblatt; alle weiteren Positionen werden automatisch auf so viele Folgeseiten verteilt, wie benötigt werden.
+Ein Stern vor dem Fenstertitel zeigt ungespeicherte Änderungen an. Mit `Strg + S` oder **Speichern** wird eine `.werkplan`-Datei erzeugt. Das aktuelle Dateiformat ist Version 9 und unterstützt Ebenen, Gruppen, neue Grundformen, getrennte Ansichtseinstellungen sowie objekt- und achsenbezogene Richtmaße.
+
+Beim Export werden nicht druckbare Ebenen ausgelassen. Die ersten sechs Materialpositionen erscheinen auf dem Zeichnungsblatt; alle weiteren Positionen verteilt Werkplan automatisch auf zusätzliche PDF-Seiten.
 
 ## Objektinspektor und Kontextmenü
 
