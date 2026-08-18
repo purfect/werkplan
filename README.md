@@ -2,7 +2,7 @@
 
 Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vollständig offline im Browser und benötigt weder Installation noch Server.
 
-![Werkplan mit technischer Zeichnung](Screenshot%202026-08-18%20111535.png)
+![Werkplan mit technischer Zeichnung](Screenshot.png)
 
 ## Start unter Windows 11
 
