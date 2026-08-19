@@ -265,6 +265,13 @@ function smartEditLineAt(point, mode) {
 function objectSnapResult(point, origin = null) {
   const candidates = [];
   const segments = lineSegments();
+  if (state.snapModes.midpoint) {
+    logicalObjectEntries().forEach(entry => {
+      const members = entry.members.filter(object => isObjectVisible(object) && objectView(object) === state.activeView && object.type !== 'dimension' && object.type !== 'angleDimension');
+      const bounds = boundsForObjects(members);
+      if (bounds) addPointCandidate(candidates, point, { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }, 'Objektzentrum');
+    });
+  }
   segments.forEach(segment => {
     if (state.snapModes.endpoint) { addPointCandidate(candidates, point, { x: segment.x1, y: segment.y1 }, 'Endpunkt'); addPointCandidate(candidates, point, { x: segment.x2, y: segment.y2 }, 'Endpunkt'); }
     if (state.snapModes.midpoint) addPointCandidate(candidates, point, { x: (segment.x1 + segment.x2) / 2, y: (segment.y1 + segment.y2) / 2 }, 'Mittelpunkt');
@@ -309,6 +316,7 @@ function objectSnapResult(point, origin = null) {
   }
   activeViewObjects().forEach(object => {
     if (object.type === 'circle' || object.type === 'semicircle') {
+      if (state.snapModes.midpoint) addPointCandidate(candidates, point, { x: object.x, y: object.y }, 'Objektzentrum');
       if (state.snapModes.quadrant) [{ x: object.x + object.r, y: object.y }, { x: object.x - object.r, y: object.y }, { x: object.x, y: object.y + object.r }, { x: object.x, y: object.y - object.r }].forEach(quadrant => addPointCandidate(candidates, point, quadrant, 'Quadrant'));
       if (origin) {
         const centerDistance = distance(origin, { x: object.x, y: object.y });
@@ -318,11 +326,19 @@ function objectSnapResult(point, origin = null) {
         }
       }
     }
-    if ((object.type === 'ellipse' || object.type === 'ellipseArc') && state.snapModes.quadrant) [{ x: object.x + object.rx, y: object.y }, { x: object.x - object.rx, y: object.y }, { x: object.x, y: object.y + object.ry }, { x: object.x, y: object.y - object.ry }].forEach(quadrant => addPointCandidate(candidates, point, quadrant, 'Quadrant'));
+    if (object.type === 'ellipse' || object.type === 'ellipseArc') {
+      if (state.snapModes.midpoint) addPointCandidate(candidates, point, { x: object.x, y: object.y }, 'Objektzentrum');
+      if (state.snapModes.quadrant) [{ x: object.x + object.rx, y: object.y }, { x: object.x - object.rx, y: object.y }, { x: object.x, y: object.y + object.ry }, { x: object.x, y: object.y - object.ry }].forEach(quadrant => addPointCandidate(candidates, point, quadrant, 'Quadrant'));
+    }
   });
-  const threshold = Math.max(150, drawingScale() * 12);
-  const priority = { Endpunkt: 0, Schnittpunkt: 1, Quadrant: 2, Tangente: 3, Mittelpunkt: 4, Lotpunkt: 5, Senkrecht: 6, Parallel: 7, Verlängerung: 8, Kante: 9 };
-  const best = candidates.sort((a, b) => a.distance - b.distance || (priority[a.type] ?? 9) - (priority[b.type] ?? 9))[0];
+  const canvasRect = canvas.getBoundingClientRect();
+  const modelUnitsPerScreenPixel = viewBox.width / Math.max(1, canvasRect.width) * drawingScale();
+  const threshold = Math.max(150, modelUnitsPerScreenPixel * 14);
+  const priority = { Endpunkt: 0, Schnittpunkt: 1, Objektzentrum: 2, Quadrant: 3, Tangente: 4, Mittelpunkt: 5, Lotpunkt: 6, Senkrecht: 7, Parallel: 8, Verlängerung: 9, Kante: 10 };
+  const nearbyCenters = candidates.filter(candidate => candidate.type === 'Objektzentrum' && candidate.distance <= threshold).sort((a, b) => a.distance - b.distance);
+  if (nearbyCenters.length) return nearbyCenters[0];
+  const pointCandidates = candidates.filter(candidate => candidate.type !== 'Kante' && candidate.distance <= threshold);
+  const best = (pointCandidates.length ? pointCandidates : candidates).sort((a, b) => a.distance - b.distance || (priority[a.type] ?? 9) - (priority[b.type] ?? 9))[0];
   return best && best.distance <= threshold ? best : { point, type: null, distance: 0 };
 }
 function snapPoint(point) { return state.snap ? { x: Math.round(point.x / snapSize) * snapSize, y: Math.round(point.y / snapSize) * snapSize } : point; }
@@ -343,7 +359,7 @@ function eventPoint(event, objectSnap = false, snapOrigin = null) {
   currentSnap = snapped;
   return snapped.point;
 }
-function toolUsesObjectSnap() { return ['line', 'dimension', 'polyline', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(state.tool); }
+function toolUsesObjectSnap() { return ['line', 'dimension', 'polyline', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(state.tool) || isWoodTool(state.tool); }
 function constrainedEndPoint(start, current) {
   const realLength = Number(document.querySelector('#targetLength')?.value);
   if (!realLength || realLength <= 0) return current;
@@ -1065,8 +1081,8 @@ function createWoodGeometry(start, end) {
     return [line(start.x + nx, start.y + ny, end.x + nx, end.y + ny, 'dashed'), line(start.x - nx, start.y - ny, end.x - nx, end.y - ny, 'dashed'), line(start.x, start.y, end.x, end.y, 'center')];
   }
   if (state.tool === 'bohrung') {
-    const radius = Math.min(box.width, box.height) / 3; const axisLength = radius * 1.45;
-    return [circle(midX, midY, radius), line(midX - axisLength, midY, midX + axisLength, midY, 'center'), line(midX, midY - axisLength, midX, midY + axisLength, 'center')];
+    const radius = Math.max(20, distance(start, end)); const axisLength = radius * 1.45;
+    return [circle(start.x, start.y, radius), line(start.x - axisLength, start.y, start.x + axisLength, start.y, 'center'), line(start.x, start.y - axisLength, start.x, start.y + axisLength, 'center')];
   }
   if (state.tool === 'nutFeder') return [rect(box.x, box.y, box.width, box.height), line(box.x, midY, x2, midY, 'center'), rect(box.x + box.width * .38, box.y + box.height * .15, box.width * .24, box.height * .7)];
   if (state.tool === 'eckverbindung') return [line(box.x, midY, x2, midY), line(midX, box.y, midX, y2), line(box.x, box.y, midX, midY, 'dashed')];
