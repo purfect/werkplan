@@ -2,6 +2,8 @@
 
 Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vollständig offline im Browser und benötigt weder Installation noch Server.
 
+Die Darstellung orientiert sich an den üblichen Konventionen technischer Zeichnungen nach DIN EN ISO 128 und DIN EN ISO 129-1: sichtbare Konturen als Volllinien, verdeckte Kanten als schmale Strichlinien, Achsen als schmale Strichpunktlinien sowie Schnittverläufe als hervorgehobene Strichpunktlinien. Das Programm ersetzt keine normgerechte Endkontrolle der ausgegebenen Zeichnung.
+
 ![Werkplan mit technischer Zeichnung](Screenshot.png)
 
 ## Start unter Windows 11
@@ -26,7 +28,7 @@ Lokales Zeichenprogramm für technische Entwurfszeichnungen. Werkplan läuft vol
 - **Eigenschaften bearbeiten**: Werte im rechten Panel ändern; die Änderung wird beim Verlassen des Feldes direkt übernommen
 - **Objekt löschen**: "Auswahl löschen" Button klicken
 
-Im Eigenschaftenbereich stehen zusätzlich exaktes Verschieben und Duplizieren, Drehen, horizontales und vertikales Spiegeln sowie rechteckige und kreisförmige Wiederholungen zur Verfügung. Linien können an Anfang oder Ende um einen festen Betrag getrimmt oder verlängert und an einer exakten Länge geteilt werden.
+Im Eigenschaftenbereich stehen zusätzlich Schnellaktionen für Duplizieren, Drehen, Spiegeln, Bemaßen und Löschen sowie exaktes Verschieben zur Verfügung. Linien können an Anfang oder Ende um einen festen Betrag getrimmt oder verlängert und an einer exakten Länge geteilt werden.
 
 ### Linie (Werkzeug 2)
 Klicken und ziehen für eine gerade Linie.
@@ -72,13 +74,13 @@ Die Muster werden identisch auf der Arbeitsfläche sowie im SVG-, PNG- und PDF-E
 
 ## Ebenen
 
-Werkplan besitzt die Ebenen **Kontur**, **Achsen**, **Bemaßung**, **Text** und **Hilfslinien**. Neue Objekte werden auf der aktiven Ebene angelegt. Pro Ebene stehen drei getrennte Schalter zur Verfügung:
+Werkplan besitzt zunächst die Ebenen **Kontur**, **Achsen**, **Bemaßung** und **Text**. Über **Eigene Ebene hinzufügen** können weitere Ebenen angelegt werden. Neue Objekte werden auf der aktiven Ebene angelegt. Mit den Pfeilen in der Ebenenliste lässt sich eine Ebene nach hinten oder vorne verschieben; weiter vorne liegende Ebenen überdecken dabei unabhängig vom Zeichenzeitpunkt die dahinterliegenden Ebenen. Pro Ebene stehen drei getrennte Schalter zur Verfügung:
 
 - **S**: auf der Arbeitsfläche sichtbar
 - **G**: gegen Auswahl und Bearbeitung gesperrt
 - **D**: in SVG, PNG und PDF druckbar
 
-Die Sichtbarkeit wird für jede Arbeitsansicht separat gespeichert. Hilfslinien sind standardmäßig nicht druckbar.
+Die Sichtbarkeit wird für jede Arbeitsansicht separat gespeichert.
 
 ## Mehrfachauswahl und Gruppen
 
@@ -174,8 +176,8 @@ Sind mehrere Ansichten aktiviert, berechnet Werkplan den kleinsten gemeinsamen g
 Unter **Maßstab & Richtmaß → Exportmaßstab** stehen folgende Möglichkeiten zur Verfügung:
 
 - **Automatisch einpassen**: Werkplan berechnet den kleinsten gemeinsamen Maßstab, bei dem alle aktivierten Ansichten vollständig passen.
-- Voreinstellungen `1:1`, `1:2`, `1:5`, `1:10`, `1:20`, `1:50` und `1:100`.
-- **Benutzerdefiniert**: Ein beliebiger Nenner wie `1:7,5` kann eingegeben werden.
+- Voreinstellungen von Vergrößerungen `10:1`, `5:1`, `2:1` bis zu Verkleinerungen wie `1:100`.
+- **Benutzerdefiniert**: Ein beliebiger Nenner kann eingegeben werden. Werte kleiner als `1` erzeugen Vergrößerungen, zum Beispiel `0,5` für `2:1`.
 
 Der Exportmaßstab gilt gemeinsam für alle aktivierten Ansichten, damit Größen direkt vergleichbar bleiben. Ist ein manuell gewählter Maßstab zu groß für den verfügbaren Blattbereich, zeigt die Projektprüfung den mindestens benötigten Wert an. Der gewählte Wert wird trotzdem verwendet; die Ansichtsgrenzen schützen Blattrahmen und Schriftfeld vor Überläufen.
 

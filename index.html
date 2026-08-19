@@ -27,8 +27,14 @@
   <main class="workspace">
     <aside class="sidebar left-panel">
       <div class="panel-heading"><span>Werkzeuge</span><kbd>1-7</kbd></div>
-      <div class="tool-grid" role="toolbar" aria-label="Werkzeuge">
-        <button class="tool-button active" data-tool="select"><span class="tool-icon">+</span><span>Auswahl</span><kbd>1</kbd></button>
+      <div class="tool-categories" role="tablist" aria-label="Werkzeugkategorien">
+        <button type="button" class="tool-category active" data-category="general" role="tab" aria-selected="true">Allgemein</button>
+        <button type="button" class="tool-category" data-category="joinery" role="tab" aria-selected="false">Tischlern</button>
+        <button type="button" class="tool-category" data-category="carving" role="tab" aria-selected="false">Kunstschnitzen</button>
+        <button type="button" class="tool-category" data-category="turning" role="tab" aria-selected="false">Drechseln</button>
+      </div>
+      <button class="tool-button persistent-select active" data-tool="select"><span class="tool-icon">+</span><span>Auswahl</span><kbd>1</kbd></button>
+      <div class="tool-grid tool-category-panel" data-category-panel="general" role="toolbar" aria-label="Allgemeine Werkzeuge">
         <button class="tool-button" data-tool="line"><span class="tool-icon">/</span><span>Linie</span><kbd>2</kbd></button>
         <button class="tool-button" data-tool="circle"><span class="tool-icon">O</span><span>Kreis</span><kbd>3</kbd></button>
         <button class="tool-button" data-tool="semicircle"><span class="tool-icon">C</span><span>Halbkreis</span><kbd>4</kbd></button>
@@ -37,8 +43,44 @@
         <button class="tool-button" data-tool="text"><span class="tool-icon">T</span><span>Text</span><kbd>7</kbd></button>
         <button class="tool-button" data-tool="slot"><span class="tool-icon">▭</span><span>Langloch</span><kbd></kbd></button>
         <button class="tool-button" data-tool="polygon"><span class="tool-icon">⬡</span><span>Polygon</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="ellipse"><span class="tool-icon">◯</span><span>Ellipse</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="ellipseArc"><span class="tool-icon">◠</span><span>Ellipsenbogen</span><kbd></kbd></button>
+        <button class="tool-button" data-tool="polyline"><span class="tool-icon">⌁</span><span>Polylinie</span><kbd></kbd></button>
         <button class="tool-button" data-tool="smartTrim"><span class="tool-icon">⌫</span><span>Trimmen</span><kbd></kbd></button>
         <button class="tool-button" data-tool="smartExtend"><span class="tool-icon">↦</span><span>Verlängern</span><kbd></kbd></button>
+      </div>
+      <div class="tool-grid tool-category-panel" data-category-panel="joinery" role="toolbar" aria-label="Tischlerwerkzeuge" hidden>
+        <button class="tool-button planned-tool" data-planned="zapfenSchlitz"><span class="tool-icon">⊣</span><span>Zapfen &amp; Schlitz</span></button>
+        <button class="tool-button planned-tool" data-planned="ueberblattung"><span class="tool-icon">⊞</span><span>Überblattung</span></button>
+        <button class="tool-button planned-tool" data-planned="fingerzinken"><span class="tool-icon">▥</span><span>Fingerzinken</span></button>
+        <button class="tool-button planned-tool" data-planned="schwalbenschwanz"><span class="tool-icon">◈</span><span>Schwalbenschwanz</span></button>
+        <button class="tool-button planned-tool" data-planned="duebel"><span class="tool-icon">○</span><span>Dübel</span></button>
+        <button class="tool-button planned-tool" data-planned="nutFeder"><span class="tool-icon">═</span><span>Nut &amp; Feder</span></button>
+        <button class="tool-button planned-tool" data-planned="bohrung"><span class="tool-icon">◎</span><span>Bohrung</span></button>
+        <button class="tool-button planned-tool" data-planned="eckverbindung"><span class="tool-icon">∟</span><span>Eckverbindung</span></button>
+        <button class="tool-button planned-tool" data-planned="scharnier"><span class="tool-icon">⋮</span><span>Scharnier</span></button>
+        <button class="tool-button planned-tool" data-planned="schnittlinie"><span class="tool-icon">A-A</span><span>Schnittlinie</span></button>
+      </div>
+      <div class="tool-grid tool-category-panel" data-category-panel="carving" role="toolbar" aria-label="Werkzeuge für Kunstschnitzen" hidden>
+        <button class="tool-button planned-tool" data-planned="freihandkurve"><span class="tool-icon">⌁</span><span>Freihandkurve</span></button>
+        <button class="tool-button planned-tool" data-planned="bezierkurve"><span class="tool-icon">∿</span><span>Bézierkurve</span></button>
+        <button class="tool-button planned-tool" data-planned="ornamentsegment"><span class="tool-icon">❖</span><span>Ornamentsegment</span></button>
+        <button class="tool-button planned-tool" data-planned="rosette"><span class="tool-icon">✤</span><span>Rosette</span></button>
+        <button class="tool-button planned-tool" data-planned="blatt"><span class="tool-icon">❧</span><span>Blatt</span></button>
+        <button class="tool-button planned-tool" data-planned="bluete"><span class="tool-icon">✿</span><span>Blüte</span></button>
+        <button class="tool-button planned-tool" data-planned="ranke"><span class="tool-icon">❦</span><span>Ranke</span></button>
+        <button class="tool-button planned-tool" data-planned="reliefprofil"><span class="tool-icon">⌒</span><span>Reliefprofil</span></button>
+        <button class="tool-button planned-tool" data-planned="symmetrieachse"><span class="tool-icon">⋮</span><span>Symmetrieachse</span></button>
+      </div>
+      <div class="tool-grid tool-category-panel" data-category-panel="turning" role="toolbar" aria-label="Werkzeuge für Drechseln" hidden>
+        <button class="tool-button planned-tool" data-planned="drehachse"><span class="tool-icon">↕</span><span>Drehachse</span></button>
+        <button class="tool-button planned-tool" data-planned="kehle"><span class="tool-icon">∪</span><span>Kehle</span></button>
+        <button class="tool-button planned-tool" data-planned="kegel"><span class="tool-icon">△</span><span>Kegel</span></button>
+        <button class="tool-button planned-tool" data-planned="schalenprofil"><span class="tool-icon">◡</span><span>Schalenprofil</span></button>
+        <button class="tool-button planned-tool" data-planned="absatz"><span class="tool-icon">⌗</span><span>Absatz</span></button>
+        <button class="tool-button planned-tool" data-planned="zapfen"><span class="tool-icon">▯</span><span>Zapfen</span></button>
+        <button class="tool-button planned-tool" data-planned="wandstaerke"><span class="tool-icon">↔</span><span>Wandstärke</span></button>
+        <button class="tool-button planned-tool" data-planned="bohrtiefe"><span class="tool-icon">⇣</span><span>Bohrtiefe</span></button>
       </div>
 
       <div class="section-divider"></div>
@@ -109,6 +151,15 @@
       <div class="view-actions"><button id="zoomOut" class="small-button">−</button><strong id="zoomLabel">100%</strong><button id="zoomIn" class="small-button">+</button><button id="fitView" class="fit-button">Alles</button><button id="fitSelection" class="fit-button">Auswahl</button></div>
       <label class="check-row"><input id="gridToggle" type="checkbox" checked> Raster anzeigen</label>
       <label class="check-row"><input id="snapToggle" type="checkbox" checked> Am Raster einrasten</label>
+      <details class="snap-options"><summary>Objektfang</summary>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="endpoint" type="checkbox" checked> Endpunkte</label>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="midpoint" type="checkbox" checked> Mittelpunkte</label>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="intersection" type="checkbox" checked> Schnittpunkte</label>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="tangent" type="checkbox" checked> Tangenten</label>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="perpendicular" type="checkbox" checked> Lotpunkte</label>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="quadrant" type="checkbox" checked> Kreisquadranten</label>
+        <label class="check-row"><input class="snap-mode" data-snap-mode="extension" type="checkbox" checked> Linienverlängerung</label>
+      </details>
     </aside>
 
     <section class="drawing-area">
@@ -139,11 +190,8 @@
         <summary class="panel-heading"><span>Ebenen</span><span id="activeLayerName" class="muted">Kontur</span></summary>
         <label class="field-label" for="activeLayer">Aktive Ebene</label>
         <select id="activeLayer" class="text-input"></select>
+        <button id="addLayer" type="button" class="copy-button">Eigene Ebene hinzufügen</button>
         <div id="layerList" class="layer-list"></div>
-      </details>
-      <details class="accordion-section">
-        <summary class="panel-heading"><span>Projektwarnungen</span><span id="warningCount" class="warning-count">0</span></summary>
-        <div id="warningList" class="warning-list"></div>
       </details>
       <details class="accordion-section" open>
         <summary class="panel-heading"><span>Eigenschaften</span><span id="selectionCount" class="muted">Nichts ausgew&auml;hlt</span></summary>
@@ -180,8 +228,8 @@
         <label class="field-label" for="sheetFormat">Blatt</label>
         <div class="scale-row"><select id="sheetFormat" class="scale-select"><option value="A3">A3</option><option value="A4">A4</option></select><select id="sheetOrientation" class="scale-select"><option value="landscape">Quer</option><option value="portrait">Hoch</option></select></div>
         <label class="field-label" for="exportScaleSelect">Exportmaßstab</label>
-        <select id="exportScaleSelect" class="text-input"><option value="auto">Automatisch einpassen</option><option value="1">1:1</option><option value="2">1:2</option><option value="5">1:5</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select>
-        <div id="customExportScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customExportScale">Eigener Exportmaßstab 1 :</label><input id="customExportScale" class="text-input" type="number" min="1" step="0.1" value="10"></div>
+        <select id="exportScaleSelect" class="text-input"><option value="auto">Automatisch einpassen</option><option value="0.1">10:1</option><option value="0.2">5:1</option><option value="0.5">2:1</option><option value="1">1:1</option><option value="2">1:2</option><option value="5">1:5</option><option value="10">1:10</option><option value="20">1:20</option><option value="50">1:50</option><option value="100">1:100</option><option value="custom">Benutzerdefiniert</option></select>
+        <div id="customExportScaleWrap" class="custom-scale-wrap" hidden><label class="field-label" for="customExportScale">Eigener Exportmaßstab-Nenner</label><input id="customExportScale" class="text-input" type="text" inputmode="decimal" value="10"></div>
         <div id="exportScaleStatus" class="scale-note">Wird beim Export automatisch passend berechnet.</div>
         <label class="field-label">Ansichten im Export</label>
         <label class="check-row"><input class="view-toggle" type="checkbox" value="front" checked> Frontansicht</label>
@@ -197,6 +245,10 @@
         <div id="scaleDescription" class="scale-note">Ein gezeichnetes Blattma&szlig; von 100 mm entspricht bei 1:20 einem echten Ma&szlig; von 2.000 mm.</div>
         <div class="tip-box"><strong>Arbeitsweise</strong><span>Ma&szlig;e werden beim Zeichnen in Millimetern erfasst. Mit <b>Strg + S</b> speicherst du jederzeit den aktuellen Stand.</span></div>
       </details>
+      <details class="accordion-section">
+        <summary class="panel-heading"><span>Projektwarnungen</span><span id="warningCount" class="warning-count">0</span></summary>
+        <div id="warningList" class="warning-list"></div>
+      </details>
     </aside>
   </main>
   <div id="commandPalette" class="command-palette-backdrop" hidden>
@@ -207,7 +259,9 @@
     </div>
   </div>
   <div id="contextMenu" class="context-menu" hidden>
+    <button type="button" data-action="properties">Eigenschaften</button>
     <button type="button" data-action="copy">Kopieren</button>
+    <button type="button" data-action="duplicate">Duplizieren</button>
     <div class="context-menu-label">Kopie einfügen in</div>
     <button type="button" data-action="copyToView" data-view="front">Frontansicht</button>
     <button type="button" data-action="copyToView" data-view="side">Seitenansicht</button>
@@ -217,6 +271,8 @@
     <button type="button" data-action="mirrorH">Horizontal spiegeln</button>
     <button type="button" data-action="mirrorV">Vertikal spiegeln</button>
     <button type="button" data-action="dimension">Bemaßen</button>
+    <button type="button" data-action="diameterDimension">Durchmesser bemaßen</button>
+    <button type="button" data-action="angleDimension">Winkel bemaßen</button>
     <button type="button" data-action="material">Material zuordnen</button>
     <button type="button" data-action="delete" class="danger">Löschen</button>
   </div>
