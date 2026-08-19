@@ -904,11 +904,11 @@ function syncScaleControls() {
 }
 function updateScaleUi() {
   const effectiveScale = state.autoScale ? calculateAutoScale() : state.scale;
-  document.querySelector('#scaleMeta').textContent = state.autoScale ? `Auto 1:${effectiveScale}` : `1:${state.scale}`;
+  document.querySelector('#scaleMeta').textContent = state.autoScale ? `Auto ${formatScaleRatio(effectiveScale)}` : formatScaleRatio(state.scale);
   document.querySelector('#sheetMeta').textContent = `${state.sheetFormat} ${state.sheetOrientation === 'portrait' ? 'hoch' : 'quer'}`;
   const reference = state.viewReferences[state.activeView];
   document.querySelector('#viewReferenceStatus').textContent = reference ? `${viewNames[state.activeView]} kalibriert: × ${trimNumber(reference.factor)}` : `${viewNames[state.activeView]}: nicht kalibriert`;
-  document.querySelector('#scaleDescription').textContent = state.autoScale ? `Der Exportmaßstab wird automatisch als 1:${effectiveScale} errechnet. Die Arbeitsfläche bleibt beim Zeichnen stabil.` : `Ein gezeichnetes Blattmaß von 100 mm entspricht bei 1:${state.scale} einem echten Maß von ${formatLength(100 * state.scale)}.`;
+  document.querySelector('#scaleDescription').textContent = state.autoScale ? `Der Exportmaßstab wird automatisch als ${formatScaleRatio(effectiveScale)} errechnet. Die Arbeitsfläche bleibt beim Zeichnen stabil.` : `Ein gezeichnetes Blattmaß von 100 mm entspricht bei ${formatScaleRatio(state.scale)} einem echten Maß von ${formatLength(100 * state.scale)}.`;
   document.querySelector('#gridStatus').textContent = `Raster ${formatLength(snapSize * state.scale)}`;
 }
 function setScale(value) {
@@ -1391,13 +1391,27 @@ function geometryFields(object) {
   if (object.type === 'text') return `<label class="wide-field">Text<input name="value" type="text" value="${escapeHtml(object.value)}"></label><label>X ${unitInput('x', real(object.x))}</label><label>Y ${unitInput('y', real(object.y))}</label>`;
   return '<div class="property-note">Dieses Objekt hat derzeit keine zusätzlichen Eigenschaften.</div>';
 }
+function referenceMeasurement(objects, side = 'width') {
+  if (objects.length === 1 && (objects[0].type === 'line' || objects[0].type === 'dimension')) return distance({ x: objects[0].x1, y: objects[0].y1 }, { x: objects[0].x2, y: objects[0].y2 });
+  const geometry = objects.filter(object => object.type !== 'dimension' && object.type !== 'angleDimension');
+  const bounds = boundsForObjects(geometry.length ? geometry : objects);
+  return bounds ? side === 'height' ? bounds.maxY - bounds.minY : bounds.maxX - bounds.minX : 0;
+}
+function referenceControlHtml(objects) {
+  if (!objects.length) return '';
+  const object = objects[0]; const viewName = viewNames[objectView(object)]; const linear = objects.length === 1 && (object.type === 'line' || object.type === 'dimension');
+  const defaultSide = linear ? 'length' : 'width'; const length = referenceMeasurement(objects, defaultSide);
+  const sideControl = linear ? '' : '<select id="referenceSide"><option value="width" selected>Gesamtbreite</option><option value="height">Gesamthöhe</option></select>';
+  const rectDimensions = objects.length === 1 && object.type === 'rect' ? '<button id="addRectDimensions" class="reference-button">Breite und Höhe bemaßen</button>' : '';
+  return `<details class="reference-box" open><summary>Richtmaß ${viewName}</summary><span>Kalibriert alle Maße und exakten Eingaben dieser Ansicht. Die Geometrie bleibt unverändert.</span><div class="reference-row reference-row-stack">${sideControl}<div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.max(1, Math.round(calibratedLength(length, object)))}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button>${rectDimensions}</div></details>`;
+}
 function showProperties(object) {
   document.querySelector('#selectionCount').textContent = '1 ausgewählt';
   const measuredLength = object.type === 'line' || object.type === 'dimension' ? distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }) : 0;
   const dimension = object.type === 'dimension' ? dimensionLabelText(object, measuredLength) : object.type === 'angleDimension' ? angleDimensionLabel(object) : object.type === 'line' ? formatLength(calibratedLength(measuredLength, object)) : object.type === 'rect' ? `${formatLength(calibratedLength(object.width, object))} x ${formatLength(calibratedLength(object.height, object))}` : object.type === 'circle' || object.type === 'semicircle' ? `R ${formatLength(calibratedLength(object.r, object))}` : objectSummary(object);
   const rectHasAutoDimensions = object.type === 'rect' && state.objects.some(item => item.type === 'dimension' && item.sourceRectId === object.id);
   const referenceViewName = viewNames[objectView(object)];
-  const referenceControl = object.type === 'line' || object.type === 'dimension' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Kalibriert alle Maße und exakten Eingaben dieser Ansicht. Bestehende Geometrie bleibt unverändert.</span><div class="reference-row"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(measuredLength || 1800, object))}"><span>mm</span><button id="setReference" class="reference-button">Übernehmen</button></div></details>` : object.type === 'rect' ? `<details class="reference-box" open><summary>Richtmaß ${referenceViewName}</summary><span>Breite oder Höhe dient als bekannte Strecke für alle Maße und exakten Eingaben dieser Ansicht.</span><div class="reference-row reference-row-stack"><select id="referenceRectSide"><option value="height" selected>Höhe</option><option value="width">Breite</option></select><div class="reference-length-line"><input id="referenceLength" type="number" min="1" step="1" value="${Math.round(calibratedLength(object.height || 1800, object, 'height'))}"><span>mm</span></div><button id="setReference" class="reference-button">Übernehmen</button><button id="addRectDimensions" class="reference-button">${rectHasAutoDimensions ? 'Bemaßung entfernen' : 'Breite und Höhe bemaßen'}</button></div></details>` : '';
+  const referenceControl = referenceControlHtml([object]);
   const referenceResetControl = state.viewReferences[objectView(object)] ? '<button id="clearReference" class="copy-button">Richtmaß dieser Ansicht entfernen</button>' : '';
   const rectControls = '';
   const circleControls = object.type === 'circle' || object.type === 'semicircle' ? `<button id="addRadiusDimension" class="copy-button">Radius bemaßen</button><button id="addDiameterDimension" class="copy-button">Durchmesser bemaßen</button>` : '';
@@ -1418,7 +1432,7 @@ function showProperties(object) {
   if (object.type === 'dimension' && document.querySelector('[name="dimensionUnit"]')) document.querySelector('[name="dimensionUnit"]').value = object.dimensionUnit || '';
   document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
   document.querySelector('#clearReference')?.addEventListener('click', clearSelectedReference);
-  document.querySelector('#referenceRectSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(calibratedLength(event.target.value === 'width' ? object.width : object.height, object, event.target.value)); });
+  document.querySelector('#referenceSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(calibratedLength(referenceMeasurement([object], event.target.value), object)); });
   document.querySelector('#addRectDimensions')?.addEventListener('click', addRectDimensions);
   document.querySelector('#addRadiusDimension')?.addEventListener('click', addRadiusDimension);
   document.querySelector('#addDiameterDimension')?.addEventListener('click', addDiameterDimension);
@@ -1450,7 +1464,11 @@ function showMultiSelectionProperties() {
   const objects = selectedObjects();
   document.querySelector('#selectionCount').textContent = `${objects.length} ausgewählt`;
   const grouped = objects.every(object => object.groupId && object.groupId === objects[0].groupId);
-  propertyPanel.innerHTML = `<div class="property-note">${objects.length} Objekte ausgewählt.</div><div class="quick-actions"><button id="moveToActiveLayer" type="button">Auf aktive Ebene</button><button id="moveToNewLayer" type="button">Auf neue Ebene</button><button id="groupSelection" type="button">Gruppieren</button><button id="ungroupSelection" type="button" ${grouped ? '' : 'disabled'}>Gruppierung aufheben</button><button id="addObjectMaterial" type="button">Als Materialposition zuordnen</button><button id="copyObject" type="button">Kopieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 90, '°')}</label><button id="rotateExact" type="button">Gemeinsam drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button><button id="deleteSelected" type="button">Auswahl löschen</button></div>${grouped ? `<div class="property-note">Gemeinsame Gruppe</div>` : ''}`;
+  const referenceControl = referenceControlHtml(objects); const referenceResetControl = state.viewReferences[objectView(objects[0])] ? '<button id="clearReference" class="copy-button">Richtmaß dieser Ansicht entfernen</button>' : '';
+  propertyPanel.innerHTML = `<div class="property-note">${objects.length} Teile als ein Werkzeug ausgewählt.</div>${referenceControl}${referenceResetControl}<div class="quick-actions"><button id="moveToActiveLayer" type="button">Auf aktive Ebene</button><button id="moveToNewLayer" type="button">Auf neue Ebene</button><button id="groupSelection" type="button">Gruppieren</button><button id="ungroupSelection" type="button" ${grouped ? '' : 'disabled'}>Gruppierung aufheben</button><button id="addObjectMaterial" type="button">Als Materialposition zuordnen</button><button id="copyObject" type="button">Kopieren</button><label class="wide-field">Drehwinkel ${unitInput('rotateAngle', 90, '°')}</label><button id="rotateExact" type="button">Gemeinsam drehen</button><button id="mirrorHorizontal" type="button">Horizontal spiegeln</button><button id="mirrorVertical" type="button">Vertikal spiegeln</button><button id="deleteSelected" type="button">Auswahl löschen</button></div>${grouped ? `<div class="property-note">Gemeinsame Gruppe</div>` : ''}`;
+  document.querySelector('#setReference')?.addEventListener('click', setSelectedAsReference);
+  document.querySelector('#clearReference')?.addEventListener('click', clearSelectedReference);
+  document.querySelector('#referenceSide')?.addEventListener('change', event => { document.querySelector('#referenceLength').value = Math.round(calibratedLength(referenceMeasurement(objects, event.target.value), objects[0])); });
   document.querySelector('#moveToActiveLayer').addEventListener('click', moveSelectedToActiveLayer);
   document.querySelector('#moveToNewLayer').addEventListener('click', moveSelectedToNewLayer);
   document.querySelector('#groupSelection').addEventListener('click', groupSelection);
@@ -1577,17 +1595,16 @@ function scaleObject(object, factor) {
   if (object.type === 'text') { object.x *= factor; object.y *= factor; }
 }
 function setSelectedAsReference() {
-  const object = state.objects.find(item => item.id === selectedId);
+  const objects = selectedObjects(); const object = objects[0];
   const targetLength = Number(document.querySelector('#referenceLength')?.value);
   if (!object || !Number.isFinite(targetLength) || targetLength <= 0) return;
-  let currentLength = 0;
-  if (object.type === 'line' || object.type === 'dimension') currentLength = distance({ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 });
-  if (object.type === 'rect') currentLength = document.querySelector('#referenceRectSide')?.value === 'width' ? object.width : object.height;
+  const side = document.querySelector('#referenceSide')?.value || 'length';
+  const currentLength = referenceMeasurement(objects, side);
   if (currentLength < 0.001) { setStatus('Richtmaß benötigt eine vorhandene Länge'); return; }
   const view = objectView(object);
   const previousDrawingScale = drawingScale(view);
   const factor = targetLength / currentLength;
-  state.viewReferences[view] = { targetLength, factor, sourceObjectId: object.id, updatedAt: new Date().toISOString() };
+  state.viewReferences[view] = { targetLength, factor, sourceObjectId: object.id, sourceObjectIds: objects.map(item => item.id), side, updatedAt: new Date().toISOString() };
   state.scale = previousDrawingScale * factor;
   const setting = ensureViewSetting(view); setting.scale = state.scale; setting.autoScale = false; state.autoScale = false;
   setDirty();
@@ -1595,7 +1612,7 @@ function setSelectedAsReference() {
   setStatus(`${viewNames[view]} auf ${formatLength(targetLength)} kalibriert`);
 }
 function clearSelectedReference() {
-  const object = state.objects.find(item => item.id === selectedId); if (!object) return;
+  const object = selectedObjects()[0] || state.objects.find(item => item.id === selectedId); if (!object) return;
   const view = objectView(object); if (!state.viewReferences[view]) return;
   const previousDrawingScale = drawingScale(view);
   delete state.viewReferences[view]; state.scale = previousDrawingScale;
