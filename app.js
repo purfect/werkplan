@@ -82,7 +82,7 @@ const snapSize = 10;
 const sheet = { width: 1200, height: 760, margin: 50, titleHeight: 118 };
 const scaleSteps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
 const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text', polyline: 'Polylinie', ellipse: 'Ellipse', ellipseArc: 'Ellipsenbogen', slot: 'Langloch', polygon: 'Polygon', smartTrim: 'Bis Schnittkante trimmen', smartExtend: 'Bis Schnittkante verlängern' };
-const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe' };
+const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', duebelsatz: 'Dübelplatzierung', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', zentrierbohrung: 'Zentrierbohrung', senkbohrung: 'Senkbohrung', lochkreis: 'Lochkreis', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', kegelstumpf: 'Kegelstumpf', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe' };
 const toolOrder = ['select', 'line', 'circle', 'semicircle', 'rect', 'dimension', 'text'];
 const viewNames = { front: 'Frontansicht', side: 'Seitenansicht', top: 'Draufsicht', detail: 'Detail' };
 const viewOrder = ['front', 'side', 'top', 'detail'];
@@ -1071,6 +1071,7 @@ function createWoodGeometry(start, end) {
   const circle = (x, y, r) => woodStyle('circle', { x, y, r });
   const polyline = points => woodStyle('polyline', { points });
   const polygon = points => woodStyle('polygon', { points });
+  const text = (x, y, value) => woodStyle('text', { x, y, value, layer: 'text' });
   const dimension = (x1, y1, x2Value, y2Value, offset = dimensionStyle().defaultOffset) => woodStyle('dimension', { x1, y1, x2: x2Value, y2: y2Value, offset, layer: 'dimension' });
   if (state.tool === 'zapfenSchlitz') return [rect(box.x, box.y, box.width, box.height), rect(box.x + box.width * .35, box.y + box.height * .25, box.width * .3, box.height * .5), line(midX, box.y, midX, y2, 'dashed')];
   if (state.tool === 'ueberblattung') return [rect(box.x, box.y, box.width, box.height), line(box.x, midY, x2, midY, 'dashed'), line(box.x + box.width * .25, box.y, box.x + box.width * .25, y2)];
@@ -1078,11 +1079,42 @@ function createWoodGeometry(start, end) {
   if (state.tool === 'schwalbenschwanz') return [rect(box.x, box.y, box.width, box.height), polygon([{ x: midX - box.width * .16, y: box.y }, { x: midX + box.width * .16, y: box.y }, { x: midX + box.width * .28, y: y2 }, { x: midX - box.width * .28, y: y2 }])];
   if (state.tool === 'duebel') {
     const dx = end.x - start.x; const dy = end.y - start.y; const length = Math.hypot(dx, dy) || 1; const nx = -dy / length * Math.min(box.width, box.height) / 6; const ny = dx / length * Math.min(box.width, box.height) / 6;
-    return [line(start.x + nx, start.y + ny, end.x + nx, end.y + ny, 'dashed'), line(start.x - nx, start.y - ny, end.x - nx, end.y - ny, 'dashed'), line(start.x, start.y, end.x, end.y, 'center')];
+    const dowelRadius = Math.min(box.width, box.height) * 0.12;
+    const centerA = { x: start.x + nx, y: start.y + ny };
+    const centerB = { x: end.x - nx, y: end.y - ny };
+    return [line(start.x + nx, start.y + ny, end.x + nx, end.y + ny, 'dashed'), line(start.x - nx, start.y - ny, end.x - nx, end.y - ny, 'dashed'), line(start.x, start.y, end.x, end.y, 'center'), circle(centerA.x, centerA.y, dowelRadius), circle(centerB.x, centerB.y, dowelRadius)];
+  }
+  if (state.tool === 'duebelsatz') {
+    const count = Math.max(2, Math.min(5, Math.round(box.width / 120))); const startX = box.x + box.width * .18; const endX = x2 - box.width * .18; const dowelRadius = Math.max(8, Math.min(box.width, box.height) * 0.09); const positions = Array.from({ length: count }, (_, index) => {
+      const t = count === 1 ? 0.5 : index / (count - 1);
+      const x = startX + (endX - startX) * t;
+      return { x, y: midY };
+    });
+    return [line(startX, midY, endX, midY, 'center'), ...positions.map(point => circle(point.x, point.y, dowelRadius)), dimension(startX, midY, endX, midY, 24), text(midX, box.y - 18, `Ø ${Math.round(dowelRadius * 2)} x ${Math.round(box.width)}`)];
   }
   if (state.tool === 'bohrung') {
     const radius = Math.max(20, distance(start, end)); const axisLength = radius * 1.45;
     return [circle(start.x, start.y, radius), line(start.x - axisLength, start.y, start.x + axisLength, start.y, 'center'), line(start.x, start.y - axisLength, start.x, start.y + axisLength, 'center')];
+  }
+  if (state.tool === 'zentrierbohrung') {
+    const radius = Math.max(8, Math.min(box.width, box.height) * 0.12);
+    const axisLength = radius * 4;
+    return [circle(midX, midY, radius * 1.6), circle(midX, midY, radius), line(midX - axisLength, midY, midX + axisLength, midY, 'center'), line(midX, midY - axisLength, midX, midY + axisLength, 'center')];
+  }
+  if (state.tool === 'senkbohrung') {
+    const radius = Math.max(16, Math.min(box.width, box.height) * 0.2);
+    const axisLength = radius * 2.4;
+    const topY = midY - radius;
+    return [circle(midX, midY, radius), line(midX - axisLength, midY, midX + axisLength, midY, 'center'), line(midX, midY - axisLength, midX, midY + axisLength, 'center'), line(midX - radius * .7, midY + radius * .9, midX, topY, 'dashed'), line(midX + radius * .7, midY + radius * .9, midX, topY, 'dashed')];
+  }
+  if (state.tool === 'lochkreis') {
+    const ringRadius = Math.max(24, Math.min(box.width, box.height) * 0.35);
+    const holes = Math.max(4, Math.min(12, Math.round(ringRadius / 18)));
+    const points = Array.from({ length: holes }, (_, index) => {
+      const angle = (index / holes) * Math.PI * 2 - Math.PI / 2;
+      return polarPoint({ x: midX, y: midY }, ringRadius, angle);
+    });
+    return [circle(midX, midY, ringRadius), ...points.map(point => circle(point.x, point.y, Math.max(8, ringRadius * 0.12))), line(midX, box.y, midX, y2, 'center')];
   }
   if (state.tool === 'nutFeder') return [rect(box.x, box.y, box.width, box.height), line(box.x, midY, x2, midY, 'center'), rect(box.x + box.width * .38, box.y + box.height * .15, box.width * .24, box.height * .7)];
   if (state.tool === 'eckverbindung') return [line(box.x, midY, x2, midY), line(midX, box.y, midX, y2), line(box.x, box.y, midX, midY, 'dashed')];
@@ -1109,6 +1141,11 @@ function createWoodGeometry(start, end) {
     return [polyline(groove), line(box.x, box.y, box.x, box.y + box.height * .15), line(x2, box.y, x2, box.y + box.height * .15)];
   }
   if (state.tool === 'kegel') return [line(box.x, box.y, x2, midY), line(box.x, y2, x2, midY), line(box.x, box.y, box.x, y2), line(box.x - box.width * .08, midY, x2 + box.width * .08, midY, 'center')];
+  if (state.tool === 'kegelstumpf') {
+    const topLeftX = box.x + box.width * .26;
+    const topRightX = x2 - box.width * .26;
+    return [line(topLeftX, box.y, topRightX, box.y), line(box.x, y2, x2, y2), line(topLeftX, box.y, box.x, y2), line(topRightX, box.y, x2, y2), line(midX, box.y, midX, y2, 'center')];
+  }
   if (state.tool === 'schalenprofil') {
     const outer = Array.from({ length: 17 }, (_, index) => { const t = index / 16; return { x: box.x + box.width * t, y: box.y + Math.sin(Math.PI * t) * box.height }; });
     const inner = Array.from({ length: 17 }, (_, index) => { const t = index / 16; return { x: box.x + box.width * (.12 + .76 * t), y: box.y + box.height * .18 + Math.sin(Math.PI * t) * box.height * .58 }; });
@@ -1409,6 +1446,11 @@ function geometryFields(object) {
 }
 function referenceMeasurement(objects, side = 'width') {
   if (objects.length === 1 && (objects[0].type === 'line' || objects[0].type === 'dimension')) return distance({ x: objects[0].x1, y: objects[0].y1 }, { x: objects[0].x2, y: objects[0].y2 });
+  const groupId = objects[0]?.groupId;
+  const dimensionObjects = objects.filter(object => object.type === 'dimension');
+  const groupDimension = groupId ? dimensionObjects.find(object => object.groupId === groupId) : null;
+  if (groupDimension) return distance({ x: groupDimension.x1, y: groupDimension.y1 }, { x: groupDimension.x2, y: groupDimension.y2 });
+  if (dimensionObjects.length) return distance({ x: dimensionObjects[0].x1, y: dimensionObjects[0].y1 }, { x: dimensionObjects[0].x2, y: dimensionObjects[0].y2 });
   const geometry = objects.filter(object => object.type !== 'dimension' && object.type !== 'angleDimension');
   const bounds = boundsForObjects(geometry.length ? geometry : objects);
   return bounds ? side === 'height' ? bounds.maxY - bounds.minY : bounds.maxX - bounds.minX : 0;
