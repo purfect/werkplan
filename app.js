@@ -82,7 +82,7 @@ const snapSize = 10;
 const sheet = { width: 1200, height: 760, margin: 50, titleHeight: 118 };
 const scaleSteps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
 const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text', polyline: 'Polylinie', ellipse: 'Ellipse', ellipseArc: 'Ellipsenbogen', slot: 'Langloch', polygon: 'Polygon', smartTrim: 'Bis Schnittkante trimmen', smartExtend: 'Bis Schnittkante verlängern' };
-const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', duebelsatz: 'Dübelplatzierung', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', zentrierbohrung: 'Zentrierbohrung', senkbohrung: 'Senkbohrung', lochkreis: 'Lochkreis', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', kegelstumpf: 'Kegelstumpf', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe' };
+const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', duebelsatz: 'Dübelplatzierung', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', zentrierbohrung: 'Zentrierbohrung', senkbohrung: 'Senkbohrung', lochkreis: 'Lochkreis', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', kegelstumpf: 'Kegelstumpf', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe', fachwerkWand: 'Fachwerkwand', schwelle: 'Schwelle', raehm: 'Rähm', staender: 'Ständer', riegel: 'Riegel', strebe: 'Strebe', kopfband: 'Kopfband', fussband: 'Fußband', andreaskreuz: 'Andreaskreuz', fensterGefach: 'Fenstergefach', tuerGefach: 'Türgefach', dachstuhl: 'Dachstuhl', staenderZapfen: 'Ständer mit Zapfen', strebenUeberblattung: 'Streben-Überblattung', strebenVersatz: 'Strebenversatz', schwalbenschwanzblatt: 'Schwalbenschwanzblatt', holznaegel: 'Holznägel', sparren: 'Sparren', pfette: 'Pfette', kehlbalken: 'Kehlbalken', first: 'First', stuhlstaender: 'Stuhlständer', dachKopfband: 'Dach-Kopfband' };
 const toolOrder = ['select', 'line', 'circle', 'semicircle', 'rect', 'dimension', 'text'];
 const viewNames = { front: 'Frontansicht', side: 'Seitenansicht', top: 'Draufsicht', detail: 'Detail' };
 const viewOrder = ['front', 'side', 'top', 'detail'];
@@ -828,10 +828,11 @@ function setActiveView(view) {
 }
 function commandDefinitions() {
   const toolCommands = Object.entries(toolNames).filter(([tool]) => !['angleDimension', 'polyline', 'ellipse', 'ellipseArc'].includes(tool)).map(([tool, name]) => ({ label: `Werkzeug: ${name}`, keywords: `zeichnen ${tool}`, run: () => setTool(tool) }));
+  const woodCommands = Object.entries(woodToolNames).map(([tool, name]) => ({ label: `Werkzeug: ${name}`, keywords: `holz zimmerei fachwerk zeichnen ${tool}`, run: () => setTool(tool) }));
   const viewCommands = Object.entries(viewNames).map(([view, name]) => ({ label: `Ansicht: ${name}`, keywords: 'arbeitsansicht wechseln', run: () => setActiveView(view) }));
   const layerCommands = state.layers.map(layer => ({ label: `Ebene aktivieren: ${layer.name}`, keywords: 'layer ebene', run: () => { state.activeLayer = layer.id; renderLayerControls(); setDirty(); setStatus(`${layer.name} aktiv`); } }));
   return [
-    ...toolCommands, ...viewCommands, ...layerCommands,
+    ...toolCommands, ...woodCommands, ...viewCommands, ...layerCommands,
     { label: 'Datei: Neues Projekt', keywords: 'neu leeren', run: () => document.querySelector('#newProject').click() },
     { label: 'Datei: Projekt laden', keywords: 'öffnen werkplan', run: () => fileInput.click() },
     { label: 'Datei: Projekt speichern', keywords: 'speichern strg s', run: saveProject },
@@ -1059,7 +1060,10 @@ function renderMaterialMarkers() {
 function newId() { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 function isWoodTool(tool = state.tool) { return Object.hasOwn(woodToolNames, tool); }
 function woodStyle(type, geometry) { return { ...geometry, type, id: newId(), view: state.activeView, layer: geometry.layer || state.activeLayer, style: geometry.style || state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }; }
-function woodBounds(start, end) { return { x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.max(40, Math.abs(end.x - start.x)), height: Math.max(40, Math.abs(end.y - start.y)) }; }
+function woodBounds(start, end) {
+  const exactEnd = exactRectEndPoint(start, end);
+  return { x: Math.min(start.x, exactEnd.x), y: Math.min(start.y, exactEnd.y), width: Math.max(40, Math.abs(exactEnd.x - start.x)), height: Math.max(40, Math.abs(exactEnd.y - start.y)) };
+}
 function addWoodObjects(objects) {
   if (!objects.length) return;
   pushHistory(); const groupId = `holz-${newId()}`; const toolName = woodToolNames[state.tool]; const created = objects.map((object, index) => ({ ...object, groupId, name: objects.length > 1 ? `${toolName} ${index + 1}` : toolName, woodTool: state.tool })); state.objects.push(...created); selectedIds = new Set(created.map(object => object.id)); selectedId = created.at(-1).id; render(); setStatus(`${toolName} gezeichnet`);
@@ -1073,6 +1077,145 @@ function createWoodGeometry(start, end) {
   const polygon = points => woodStyle('polygon', { points });
   const text = (x, y, value) => woodStyle('text', { x, y, value, layer: 'text' });
   const dimension = (x1, y1, x2Value, y2Value, offset = dimensionStyle().defaultOffset) => woodStyle('dimension', { x1, y1, x2: x2Value, y2: y2Value, offset, layer: 'dimension' });
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const timber = clamp(Math.min(box.width, box.height) * .12, 18, 70);
+  const beam = (x, y, width, height) => rect(x, y, Math.max(10, width), Math.max(10, height));
+  const diagonalBeam = (a, b, width = timber) => {
+    const dx = b.x - a.x; const dy = b.y - a.y; const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length * width / 2; const ny = dx / length * width / 2;
+    return polygon([{ x: a.x + nx, y: a.y + ny }, { x: b.x + nx, y: b.y + ny }, { x: b.x - nx, y: b.y - ny }, { x: a.x - nx, y: a.y - ny }]);
+  };
+  const dimensionedTimber = objects => [...objects, dimension(box.x, y2, x2, y2, 28)];
+  if (state.tool === 'schwelle') return dimensionedTimber([
+    beam(box.x, y2 - timber, box.width, timber),
+    line(box.x, y2 - timber / 2, x2, y2 - timber / 2, 'center'),
+    line(box.x, y2 + timber * .35, x2, y2 + timber * .35, 'dashed')
+  ]);
+  if (state.tool === 'raehm') return dimensionedTimber([
+    beam(box.x, box.y, box.width, timber),
+    beam(box.x + box.width * .18, box.y + timber, timber * .7, box.height - timber),
+    beam(x2 - box.width * .18 - timber * .7, box.y + timber, timber * .7, box.height - timber),
+    line(box.x, box.y + timber / 2, x2, box.y + timber / 2, 'center')
+  ]);
+  if (state.tool === 'staender') return dimensionedTimber([
+    beam(midX - timber / 2, box.y, timber, box.height),
+    line(midX, box.y, midX, y2, 'center'),
+    line(midX - timber * .7, box.y, midX + timber * .7, box.y, 'dashed'),
+    line(midX - timber * .7, y2, midX + timber * .7, y2, 'dashed')
+  ]);
+  if (state.tool === 'riegel') return dimensionedTimber([
+    beam(box.x, box.y, timber, box.height),
+    beam(x2 - timber, box.y, timber, box.height),
+    beam(box.x + timber, midY - timber / 2, box.width - timber * 2, timber),
+    line(box.x + timber, midY, x2 - timber, midY, 'center')
+  ]);
+  if (state.tool === 'strebe') return [diagonalBeam({ x: box.x, y: y2 - timber / 2 }, { x: x2, y: box.y + timber / 2 }), line(box.x, y2, x2, box.y, 'center'), dimension(box.x, y2, x2, box.y, 30)];
+  if (state.tool === 'kopfband') return [beam(box.x, box.y, timber, box.height), beam(box.x, box.y, box.width, timber), diagonalBeam({ x: box.x + timber / 2, y: y2 }, { x: x2, y: box.y + timber / 2 }), dimension(box.x + timber / 2, y2, x2, box.y + timber / 2, 24)];
+  if (state.tool === 'fussband') return [beam(box.x, box.y, timber, box.height), beam(box.x, y2 - timber, box.width, timber), diagonalBeam({ x: box.x + timber / 2, y: box.y }, { x: x2, y: y2 - timber / 2 }), dimension(box.x + timber / 2, box.y, x2, y2 - timber / 2, 24)];
+  if (state.tool === 'andreaskreuz') return [beam(box.x, y2 - timber, box.width, timber), beam(box.x, box.y, box.width, timber), diagonalBeam({ x: box.x, y: y2 - timber / 2 }, { x: x2, y: box.y + timber / 2 }, timber * .72), diagonalBeam({ x: box.x, y: box.y + timber / 2 }, { x: x2, y: y2 - timber / 2 }, timber * .72), line(box.x, y2, x2, box.y, 'center'), line(box.x, box.y, x2, y2, 'center')];
+  if (state.tool === 'fensterGefach') {
+    const post = Math.min(timber, box.width / 8); const rail = Math.min(timber, box.height / 7);
+    const opening = rect(box.x + box.width * .32, box.y + box.height * .28, box.width * .36, box.height * .34);
+    return [beam(box.x, y2 - rail, box.width, rail), beam(box.x, box.y, box.width, rail), beam(box.x, box.y, post, box.height), beam(x2 - post, box.y, post, box.height), beam(box.x, box.y + box.height * .28 - rail / 2, box.width, rail), beam(box.x, box.y + box.height * .62 - rail / 2, box.width, rail), opening, dimension(opening.x, opening.y + opening.height, opening.x + opening.width, opening.y + opening.height, 18)];
+  }
+  if (state.tool === 'tuerGefach') {
+    const post = Math.min(timber, box.width / 8); const rail = Math.min(timber, box.height / 8);
+    const opening = rect(box.x + box.width * .34, box.y + box.height * .24, box.width * .32, box.height * .76);
+    return [beam(box.x, y2 - rail, box.width, rail), beam(box.x, box.y, box.width, rail), beam(box.x, box.y, post, box.height), beam(x2 - post, box.y, post, box.height), beam(box.x, box.y + box.height * .24 - rail / 2, box.width, rail), opening, dimension(opening.x, y2, opening.x + opening.width, y2, 20)];
+  }
+  if (state.tool === 'fachwerkWand') {
+    const post = Math.min(timber, box.width / 10); const rail = Math.min(timber, box.height / 9);
+    const third = box.width / 3; const br = box.y + box.height * .62; const st = box.y + box.height * .3;
+    return [
+      beam(box.x, y2 - rail, box.width, rail), beam(box.x, box.y, box.width, rail),
+      beam(box.x, box.y, post, box.height), beam(x2 - post, box.y, post, box.height), beam(box.x + third - post / 2, box.y, post, box.height), beam(box.x + third * 2 - post / 2, box.y, post, box.height),
+      beam(box.x, br - rail / 2, box.width, rail), beam(box.x + third, st - rail / 2, third, rail),
+      diagonalBeam({ x: box.x + post / 2, y: y2 - rail / 2 }, { x: box.x + third - post / 2, y: box.y + rail / 2 }, timber * .8),
+      diagonalBeam({ x: box.x + third * 2 + post / 2, y: box.y + rail / 2 }, { x: x2 - post / 2, y: y2 - rail / 2 }, timber * .8),
+      diagonalBeam({ x: box.x + third + post / 2, y: y2 - rail / 2 }, { x: box.x + third * 2 - post / 2, y: box.y + rail / 2 }, timber * .65),
+      diagonalBeam({ x: box.x + third + post / 2, y: box.y + rail / 2 }, { x: box.x + third * 2 - post / 2, y: y2 - rail / 2 }, timber * .65),
+      rect(box.x + third + third * .28, st, third * .44, br - st),
+      dimension(box.x, y2, x2, y2, 30)
+    ];
+  }
+  if (state.tool === 'dachstuhl') {
+    const eaveY = box.y + box.height * .66; const ridge = { x: midX, y: box.y }; const left = { x: box.x, y: eaveY }; const right = { x: x2, y: eaveY };
+    return [beam(box.x, eaveY - timber / 2, box.width, timber), diagonalBeam(left, ridge, timber), diagonalBeam(ridge, right, timber), beam(midX - timber / 2, box.y + box.height * .18, timber, eaveY - box.y - box.height * .18), diagonalBeam({ x: box.x + box.width * .22, y: eaveY - timber / 2 }, { x: midX, y: box.y + box.height * .38 }, timber * .7), diagonalBeam({ x: x2 - box.width * .22, y: eaveY - timber / 2 }, { x: midX, y: box.y + box.height * .38 }, timber * .7), line(midX, box.y, midX, y2, 'center'), dimension(left.x, left.y, right.x, right.y, 28)];
+  }
+  if (state.tool === 'staenderZapfen') {
+    const tenonWidth = timber * .55; const tenonHeight = Math.min(box.height * .14, timber * 1.5);
+    return [beam(midX - timber / 2, box.y + tenonHeight, timber, box.height - tenonHeight * 2), beam(midX - tenonWidth / 2, box.y, tenonWidth, tenonHeight), beam(midX - tenonWidth / 2, y2 - tenonHeight, tenonWidth, tenonHeight), line(midX, box.y, midX, y2, 'center'), line(midX - timber / 2, box.y + tenonHeight, midX + timber / 2, box.y + tenonHeight, 'dashed'), line(midX - timber / 2, y2 - tenonHeight, midX + timber / 2, y2 - tenonHeight, 'dashed'), dimension(midX, box.y, midX, y2, 26)];
+  }
+  if (state.tool === 'strebenUeberblattung') {
+    const a1 = { x: box.x, y: y2 - timber / 2 }; const a2 = { x: x2, y: box.y + timber / 2 }; const b1 = { x: box.x, y: box.y + timber / 2 }; const b2 = { x: x2, y: y2 - timber / 2 };
+    return [diagonalBeam(a1, a2, timber * .82), diagonalBeam(b1, b2, timber * .82), rect(midX - timber * .9, midY - timber * .55, timber * 1.8, timber * 1.1), line(midX - timber * 1.15, midY, midX + timber * 1.15, midY, 'dashed'), line(midX, midY - timber * 1.15, midX, midY + timber * 1.15, 'dashed')];
+  }
+  if (state.tool === 'strebenVersatz') {
+    const foot = { x: box.x + timber * .8, y: y2 - timber / 2 }; const head = { x: x2, y: box.y + timber / 2 };
+    const shoulderY = y2 - timber; const notchRight = foot.x + timber * .75;
+    return [
+      beam(box.x, y2 - timber, box.width, timber),
+      beam(box.x, box.y, timber * .72, box.height),
+      diagonalBeam(foot, head, timber),
+      polygon([{ x: foot.x - timber * 1.05, y: shoulderY }, { x: notchRight, y: shoulderY }, { x: foot.x + timber * .28, y: y2 }, { x: foot.x - timber * 1.45, y: y2 }]),
+      line(foot.x - timber * 1.05, shoulderY, foot.x + timber * .28, y2, 'dashed'),
+      line(foot.x, shoulderY - timber * .85, foot.x, y2 + timber * .25, 'center'),
+      dimension(foot.x, y2, head.x, head.y, 26)
+    ];
+  }
+  if (state.tool === 'schwalbenschwanzblatt') {
+    const neck = timber * .55; const head = timber * 1.45; const pocket = timber * 1.7;
+    const beamTop = midY - timber / 2; const beamBottom = midY + timber / 2;
+    return [
+      beam(box.x, beamTop, box.width, timber),
+      polygon([{ x: midX - head / 2, y: beamTop }, { x: midX + head / 2, y: beamTop }, { x: midX + neck / 2, y: beamBottom }, { x: midX - neck / 2, y: beamBottom }]),
+      polyline([{ x: midX - pocket / 2, y: beamTop - timber * .35 }, { x: midX + pocket / 2, y: beamTop - timber * .35 }, { x: midX + head / 2, y: beamTop }]),
+      polyline([{ x: midX - pocket / 2, y: beamTop - timber * .35 }, { x: midX - head / 2, y: beamTop }]),
+      line(midX, beamTop - timber * .55, midX, beamBottom + timber * .45, 'center'),
+      line(midX - head / 2, beamTop, midX + head / 2, beamTop, 'dashed')
+    ];
+  }
+  if (state.tool === 'holznaegel') {
+    const count = Math.max(2, Math.min(8, Math.round(box.width / Math.max(65, timber * 1.6))));
+    const radius = Math.max(5, timber * .2);
+    const startX = box.x + timber; const endX = x2 - timber;
+    const pins = Array.from({ length: count }, (_, index) => {
+      const t = count === 1 ? .5 : index / (count - 1);
+      const x = startX + (endX - startX) * t; const y = index % 2 ? midY + timber * .35 : midY - timber * .35;
+      return [circle(x, y, radius), line(x - radius * 1.7, y, x + radius * 1.7, y, 'center'), line(x, y - radius * 1.7, x, y + radius * 1.7, 'center')];
+    }).flat();
+    return [line(startX, midY, endX, midY, 'dashed'), ...pins, dimension(startX, midY, endX, midY, 22)];
+  }
+  if (state.tool === 'sparren') {
+    const foot = { x: box.x, y: y2 - timber / 2 }; const ridgePoint = { x: x2, y: box.y + timber / 2 };
+    const seatX = box.x + box.width * .2; const seatY = y2 - timber * .42; const ridgeCut = timber * .95;
+    return [
+      diagonalBeam(foot, ridgePoint, timber),
+      polygon([{ x: seatX - timber * .85, y: y2 }, { x: seatX + timber * .25, y: y2 }, { x: seatX + timber * .55, y: seatY }, { x: seatX - timber * .45, y: seatY }]),
+      line(ridgePoint.x - ridgeCut, ridgePoint.y - ridgeCut * .18, ridgePoint.x, ridgePoint.y + ridgeCut * .36, 'dashed'),
+      line(foot.x, foot.y, ridgePoint.x, ridgePoint.y, 'center'),
+      line(seatX - timber * .65, y2, seatX + timber * .48, seatY, 'dashed'),
+      dimension(foot.x, foot.y, ridgePoint.x, ridgePoint.y, 28)
+    ];
+  }
+  if (state.tool === 'pfette') {
+    const supportA = box.x + box.width * .24; const supportB = x2 - box.width * .24; const supportW = timber * .85;
+    return [
+      beam(box.x, box.y + box.height * .24, box.width, timber),
+      beam(supportA - supportW / 2, box.y + box.height * .24 + timber, supportW, box.height * .42),
+      beam(supportB - supportW / 2, box.y + box.height * .24 + timber, supportW, box.height * .42),
+      beam(supportA - timber * 1.4, box.y + box.height * .24 + timber, timber * 2.8, timber * .35),
+      beam(supportB - timber * 1.4, box.y + box.height * .24 + timber, timber * 2.8, timber * .35),
+      line(box.x, box.y + box.height * .24 + timber / 2, x2, box.y + box.height * .24 + timber / 2, 'center'),
+      line(supportA, box.y + box.height * .24 + timber, supportA, y2, 'dashed'),
+      line(supportB, box.y + box.height * .24 + timber, supportB, y2, 'dashed'),
+      dimension(box.x, box.y + box.height * .24 + timber / 2, x2, box.y + box.height * .24 + timber / 2, 26)
+    ];
+  }
+  if (state.tool === 'kehlbalken') return [beam(box.x, midY - timber / 2, box.width, timber), diagonalBeam({ x: box.x, y: y2 }, { x: midX, y: midY + timber / 2 }, timber * .55), diagonalBeam({ x: x2, y: y2 }, { x: midX, y: midY + timber / 2 }, timber * .55), line(box.x, midY, x2, midY, 'center'), dimension(box.x, midY, x2, midY, 24)];
+  if (state.tool === 'first') return [beam(box.x, box.y, box.width, timber), diagonalBeam({ x: box.x + box.width * .16, y: y2 }, { x: midX, y: box.y + timber }, timber * .72), diagonalBeam({ x: x2 - box.width * .16, y: y2 }, { x: midX, y: box.y + timber }, timber * .72), line(midX, box.y - timber * .35, midX, y2, 'center')];
+  if (state.tool === 'stuhlstaender') return [beam(midX - timber / 2, box.y, timber, box.height), beam(box.x, box.y, box.width, timber), beam(box.x, y2 - timber, box.width, timber), diagonalBeam({ x: midX - timber / 2, y: box.y + timber }, { x: box.x, y: box.y + box.height * .38 }, timber * .55), diagonalBeam({ x: midX + timber / 2, y: box.y + timber }, { x: x2, y: box.y + box.height * .38 }, timber * .55), line(midX, box.y, midX, y2, 'center'), dimension(midX, box.y, midX, y2, 26)];
+  if (state.tool === 'dachKopfband') return [beam(box.x, box.y, timber, box.height), beam(box.x, box.y, box.width, timber), diagonalBeam({ x: box.x + timber / 2, y: box.y + box.height * .72 }, { x: box.x + box.width * .72, y: box.y + timber / 2 }, timber * .72), line(box.x + timber / 2, box.y + box.height * .72, box.x + box.width * .72, box.y + timber / 2, 'center'), dimension(box.x + timber / 2, box.y + box.height * .72, box.x + box.width * .72, box.y + timber / 2, 22)];
   if (state.tool === 'zapfenSchlitz') return [rect(box.x, box.y, box.width, box.height), rect(box.x + box.width * .35, box.y + box.height * .25, box.width * .3, box.height * .5), line(midX, box.y, midX, y2, 'dashed')];
   if (state.tool === 'ueberblattung') return [rect(box.x, box.y, box.width, box.height), line(box.x, midY, x2, midY, 'dashed'), line(box.x + box.width * .25, box.y, box.x + box.width * .25, y2)];
   if (state.tool === 'fingerzinken') return [rect(box.x, box.y, box.width, box.height), ...Array.from({ length: 4 }, (_, index) => line(box.x + box.width * (index + 1) / 5, box.y, box.x + box.width * (index + 1) / 5, y2))];
@@ -2142,7 +2285,7 @@ function handlePointerUp(event) {
   if (state.tool === 'dimension') addObject({ type: 'dimension', x1: start.x, y1: start.y, x2: endPoint.x, y2: endPoint.y, offset: dimensionStyle().defaultOffset });
   if (state.tool === 'rect') addObject({ type: 'rect', x: Math.min(start.x, endPoint.x), y: Math.min(start.y, endPoint.y), width: Math.abs(endPoint.x - start.x), height: Math.abs(endPoint.y - start.y), fillMode: 'none' });
 }
-function setTool(tool) { state.tool = tool; document.querySelectorAll('.tool-button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool || button.dataset.planned === tool)); document.querySelector('#toolHint').textContent = `${toolNames[tool] || woodToolNames[tool] || tool} aktiv`; document.querySelector('#lineLengthPanel').hidden = !['line', 'dimension', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(tool); updateLiveAngle(null, null); clearPreview(); polylinePoints = []; }
+function setTool(tool) { state.tool = tool; document.querySelectorAll('.tool-button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool || button.dataset.planned === tool)); document.querySelector('#toolHint').textContent = `${toolNames[tool] || woodToolNames[tool] || tool} aktiv`; document.querySelector('#lineLengthPanel').hidden = !(['line', 'dimension', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(tool) || isWoodTool(tool)); updateLiveAngle(null, null); clearPreview(); polylinePoints = []; }
 function saveProject() { state.projectName = document.querySelector('#projectName').value || 'Projekt01'; const data = { app: 'Werkplan', version: 2, unit: 'mm', projectName: state.projectName, objects: state.objects, settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale } }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${state.projectName.replace(/[^a-z0-9_-]+/gi, '_')}.werkplan`; link.click(); URL.revokeObjectURL(link.href); setStatus('Projekt gespeichert'); }
 function loadProject(file) { const reader = new FileReader(); reader.onload = () => { try { const data = JSON.parse(reader.result); pushHistory(); state.objects = Array.isArray(data.objects) ? data.objects : []; state.projectName = data.projectName || 'Projekt01'; document.querySelector('#projectName').value = state.projectName; state.grid = data.settings?.grid ?? true; state.snap = data.settings?.snap ?? true; state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 1; syncScaleControls(); document.querySelector('#gridToggle').checked = state.grid; document.querySelector('#snapToggle').checked = state.snap; selectedId = null; render(); setStatus('Projekt geladen'); } catch { setStatus('Datei konnte nicht gelesen werden'); } }; reader.readAsText(file); }
 function exportSvg() { const copy = canvas.cloneNode(true); copy.querySelector('#previewLayer')?.remove(); const source = new XMLSerializer().serializeToString(copy); const blob = new Blob([source], { type: 'image/svg+xml' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${state.projectName || 'werkplan'}.svg`; link.click(); URL.revokeObjectURL(link.href); setStatus('SVG exportiert'); }

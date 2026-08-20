@@ -54,6 +54,12 @@ Klicken, Text eingeben, Enter zum Bestätigen.
 - **Polygon**: Mittelpunkt anklicken und Radius ziehen; die Seitenzahl wird links eingestellt
 - **Fase / Abrundung**: Rechteck auswählen und unter Eigenschaften Eckenart und Eckmaß einstellen
 
+### Zimmerei / Fachwerk
+
+Die Kategorie **Zimmerei** enthält Fachwerk-Werkzeuge für Schwelle, Rähm, Ständer, Riegel, Strebe, Kopfband, Fußband, Andreaskreuz, Fenstergefach, Türgefach, Fachwerkwand und Dachstuhl. Dazu kommen Details für Ständer-Zapfen, Streben-Überblattung, Strebenversatz, Schwalbenschwanzblatt und Holznägel sowie Dachstuhlteile für Sparren, Pfette, Kehlbalken, First, Stuhlständer und Dach-Kopfband. Die Werkzeuge erzeugen gruppierte technische Einzelobjekte ohne automatische sichtbare Beschriftung, damit Rechtsklickmenü, Eigenschaften, Bemaßung, Richtmaß, Materialzuordnung, Kopieren in andere Ansichten und Export wie bei den anderen Zeichenwerkzeugen funktionieren.
+
+Fachwerk-Wandfelder orientieren sich an den üblichen Bauteilen: durchlaufende Schwelle unten, Rähm oben, senkrechte Ständer, waagerechte Riegel sowie diagonale Streben zur Aussteifung. Fenster- und Türgefache enthalten Sturzriegel; Fenstergefache zusätzlich einen Brüstungsriegel.
+
 ### Füllungen und Schraffuren
 
 Rechtecke können im Eigenschaftenbereich mit folgenden Füllungen versehen werden:
