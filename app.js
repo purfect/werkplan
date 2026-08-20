@@ -1192,6 +1192,15 @@ function selectObject(id, additive = false) {
 function setStatus(message) { statusText.textContent = message; }
 function applyViewBox() {
   canvas.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  const gridLayer = document.querySelector('#gridLayer');
+  if (gridLayer) {
+    const padX = Math.max(2000, viewBox.width * 8);
+    const padY = Math.max(2000, viewBox.height * 8);
+    gridLayer.setAttribute('x', String(viewBox.x - padX));
+    gridLayer.setAttribute('y', String(viewBox.y - padY));
+    gridLayer.setAttribute('width', String(viewBox.width + padX * 2));
+    gridLayer.setAttribute('height', String(viewBox.height + padY * 2));
+  }
   state.zoom = 1200 / viewBox.width;
   if (state.viewSettings) ensureViewSetting().viewBox = { ...viewBox };
   document.querySelector('#zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
