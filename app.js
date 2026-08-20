@@ -82,7 +82,7 @@ const snapSize = 10;
 const sheet = { width: 1200, height: 760, margin: 50, titleHeight: 118 };
 const scaleSteps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
 const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text', polyline: 'Polylinie', ellipse: 'Ellipse', ellipseArc: 'Ellipsenbogen', slot: 'Langloch', polygon: 'Polygon', smartTrim: 'Bis Schnittkante trimmen', smartExtend: 'Bis Schnittkante verlängern' };
-const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe' };
+const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', kegelstumpf: 'Kegelstumpf', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe' };
 const toolOrder = ['select', 'line', 'circle', 'semicircle', 'rect', 'dimension', 'text'];
 const viewNames = { front: 'Frontansicht', side: 'Seitenansicht', top: 'Draufsicht', detail: 'Detail' };
 const viewOrder = ['front', 'side', 'top', 'detail'];
@@ -1109,6 +1109,11 @@ function createWoodGeometry(start, end) {
     return [polyline(groove), line(box.x, box.y, box.x, box.y + box.height * .15), line(x2, box.y, x2, box.y + box.height * .15)];
   }
   if (state.tool === 'kegel') return [line(box.x, box.y, x2, midY), line(box.x, y2, x2, midY), line(box.x, box.y, box.x, y2), line(box.x - box.width * .08, midY, x2 + box.width * .08, midY, 'center')];
+  if (state.tool === 'kegelstumpf') {
+    const topLeftX = box.x + box.width * .26;
+    const topRightX = x2 - box.width * .26;
+    return [line(topLeftX, box.y, topRightX, box.y), line(box.x, y2, x2, y2), line(topLeftX, box.y, box.x, y2), line(topRightX, box.y, x2, y2), line(midX, box.y, midX, y2, 'center')];
+  }
   if (state.tool === 'schalenprofil') {
     const outer = Array.from({ length: 17 }, (_, index) => { const t = index / 16; return { x: box.x + box.width * t, y: box.y + Math.sin(Math.PI * t) * box.height }; });
     const inner = Array.from({ length: 17 }, (_, index) => { const t = index / 16; return { x: box.x + box.width * (.12 + .76 * t), y: box.y + box.height * .18 + Math.sin(Math.PI * t) * box.height * .58 }; });
