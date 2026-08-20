@@ -6,7 +6,38 @@
   "drawingNumber": "TZ-001",
   "drawnBy": "-",
   "projectDate": "2026-08-18",
-  "materials": [],
+  "materials": [
+    {
+      "pos": "1",
+      "qty": "1",
+      "unit": "St",
+      "objectQty": "4",
+      "objectIds": [
+        "1787043033122-659d315befa958",
+        "1787043054363-f511f4cc119528",
+        "1787043085641-cb9d05ddafd6e",
+        "1787043159241-8423c4edd30b48",
+        "1787045087745-43dae593551e08"
+      ],
+      "name": "Pfosten",
+      "material": "imprägniertes Holz",
+      "dimensions": "100 mm x 1,80 m",
+      "note": "witterungsbeständig"
+    },
+    {
+      "pos": "2",
+      "qty": "1",
+      "unit": "St",
+      "objectQty": "16",
+      "objectIds": [
+        "1787140132454-168b7f0d87b8b"
+      ],
+      "name": "Rückwand",
+      "material": "Nut-Federbretter",
+      "dimensions": "2,05 m x 1,80 m",
+      "note": ""
+    }
+  ],
   "objects": [
     {
       "type": "line",
@@ -113,7 +144,8 @@
       "stroke": "#263238",
       "name": "",
       "dimensionUnit": "cm",
-      "locked": false
+      "locked": false,
+      "dimensionDecimals": 0
     },
     {
       "type": "dimension",
@@ -125,12 +157,14 @@
       "layer": "dimension",
       "x1": 4031.999511718751,
       "y1": 2000,
-      "x2": 4031.9995117187527,
+      "x2": 4031.9995117187523,
       "y2": 14000,
-      "offset": 22,
+      "offset": 30,
       "style": "solid",
       "strokeWidth": 0.75,
-      "stroke": "#263238"
+      "stroke": "#263238",
+      "name": "",
+      "locked": false
     },
     {
       "type": "rect",
@@ -200,7 +234,10 @@
       "offset": 22,
       "style": "solid",
       "strokeWidth": 0.75,
-      "stroke": "#263238"
+      "stroke": "#263238",
+      "name": "",
+      "dimensionDecimals": 0,
+      "locked": false
     },
     {
       "type": "dimension",
@@ -220,7 +257,8 @@
       "stroke": "#263238",
       "name": "",
       "dimensionUnit": "cm",
-      "locked": false
+      "locked": false,
+      "dimensionDecimals": 0
     },
     {
       "type": "dimension",
@@ -273,7 +311,8 @@
       "strokeWidth": 0.75,
       "stroke": "#263238",
       "name": "",
-      "locked": false
+      "locked": false,
+      "dimensionDecimals": 0
     },
     {
       "type": "rect",
@@ -311,7 +350,8 @@
       "stroke": "#263238",
       "name": "",
       "dimensionUnit": "cm",
-      "locked": false
+      "locked": false,
+      "dimensionDecimals": 0
     },
     {
       "type": "dimension",
@@ -332,10 +372,10 @@
     },
     {
       "type": "rect",
-      "x": 404.15999999999985,
+      "x": 2200,
       "y": 14000,
-      "width": 23395.84,
-      "height": 2000,
+      "width": 16800,
+      "height": 2200,
       "fillMode": "concrete",
       "id": "1787050830190-f7489a1a5995c8",
       "view": "front",
@@ -350,9 +390,9 @@
     },
     {
       "type": "rect",
-      "x": 60.623999999999974,
+      "x": 270,
       "y": 2100,
-      "width": 3509.3759999999997,
+      "width": 1770,
       "height": 300,
       "fillMode": "concrete",
       "id": "1787050885744-17f7fa7b7b1de8",
@@ -365,12 +405,308 @@
       "cornerMode": "square",
       "cornerSize": 0,
       "locked": false
+    },
+    {
+      "type": "ellipse",
+      "x": 2400,
+      "y": 5200,
+      "rx": 83.59489316193049,
+      "ry": 0,
+      "id": "1787051554172-55335814befd8",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "ellipse",
+      "x": 1800,
+      "y": 4800,
+      "rx": 56.39489316193112,
+      "ry": 0,
+      "id": "1787051554708-5e6282726eb618",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "ellipse",
+      "x": 10000,
+      "y": 7400,
+      "rx": 99.59489316192594,
+      "ry": 0,
+      "id": "1787051578147-f9ca32c01f1178",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "ellipse",
+      "x": 11000,
+      "y": 4800,
+      "rx": 26.805106838073698,
+      "ry": 0,
+      "id": "1787051581062-66e5d46d0badc",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "ellipse",
+      "x": 11800,
+      "y": 6200,
+      "rx": 0,
+      "ry": 99.67886951367109,
+      "id": "1787051582900-4cb94940941898",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "ellipse",
+      "x": 11800,
+      "y": 6100.321130486329,
+      "rx": 177.20510683807333,
+      "ry": 0,
+      "id": "1787051583604-b82483233d23a8",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "line",
+      "x1": 4698.666178385417,
+      "y1": 3562.6925590577594,
+      "x2": 4692.080607447643,
+      "y2": 3562.6925590577594,
+      "id": "1787051726268-a34cf9540e688",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 4098.66617838542,
+      "y": 2800.000000000002,
+      "width": 3101.33382161458,
+      "height": 672.5116066768067,
+      "fillMode": "hatch",
+      "id": "1787051915123-1d3f6d578dafc8",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 1.5,
+      "stroke": "#263238",
+      "name": "",
+      "cornerMode": "square",
+      "cornerSize": 0,
+      "locked": false,
+      "rotation": 2.356194490192345
+    },
+    {
+      "type": "dimension",
+      "x1": 4698.666178385417,
+      "y1": 4419.178273343474,
+      "x2": 4688.909178876216,
+      "y2": 14000,
+      "offset": -33,
+      "id": "1787051997299-0a578584eae328",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 1.5,
+      "stroke": "#263238",
+      "name": "",
+      "locked": false
+    },
+    {
+      "type": "rect",
+      "x": 14498.66617838542,
+      "y": 2800.000000000002,
+      "width": 3101.33382161458,
+      "height": 672.5116066768067,
+      "fillMode": "hatch",
+      "id": "1787053595124-049e5ea7fe77c8",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 1.5,
+      "stroke": "#263238",
+      "name": "",
+      "cornerMode": "square",
+      "cornerSize": 0,
+      "locked": false,
+      "rotation": 0.7853981633974483
+    },
+    {
+      "type": "semicircle",
+      "x": 10785.7091788762,
+      "y": 1626.0000610351535,
+      "r": 1333.3333333333335,
+      "angle": 3.159045946109736,
+      "id": "1787053649603-06b65c115b6f2",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "locked": false
+    },
+    {
+      "type": "semicircle",
+      "x": 10785.709178876208,
+      "y": 1626.0000610351535,
+      "r": 672,
+      "angle": 3.141592653589793,
+      "id": "1787053657188-cdfd4c8b012988",
+      "view": "front",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "dimension",
+      "id": "1787053674852-be9e7c495f48d8",
+      "sourceObjectId": "1787053657188-cdfd4c8b012988",
+      "view": "front",
+      "layer": "dimension",
+      "x1": 10785.709178876208,
+      "y1": 1626.0000610351535,
+      "x2": 10113.7091788762,
+      "y2": 1626.0000610351535,
+      "offset": 22,
+      "labelPrefix": "R ",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "dimensionDecimals": 0,
+      "locked": false
+    },
+    {
+      "type": "dimension",
+      "id": "1787053922837-c4437026213a78",
+      "sourceObjectId": "1787053649603-06b65c115b6f2",
+      "view": "front",
+      "layer": "dimension",
+      "x1": 10785.7091788762,
+      "y1": 1626.0000610351535,
+      "x2": 9452.57891866768,
+      "y2": 1602.7301857854427,
+      "offset": -72,
+      "labelPrefix": "R ",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "dimensionDecimals": 0,
+      "locked": false
+    },
+    {
+      "type": "rect",
+      "x": 1842.6723582985326,
+      "y": 103.54775179175778,
+      "width": 0,
+      "height": 154.7522207424219,
+      "fillMode": "none",
+      "id": "1787053977566-d5f65992841c2",
+      "view": "side",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238"
+    },
+    {
+      "type": "rect",
+      "x": 1744.79992675781,
+      "y": 63.7542485383701,
+      "width": 100.070150973564,
+      "height": 200,
+      "fillMode": "horizontalHatch",
+      "id": "1787053983636-09f61bab04367",
+      "view": "side",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "cornerMode": "square",
+      "cornerSize": 0,
+      "locked": false
+    },
+    {
+      "type": "dimension",
+      "x1": 1744.799926757813,
+      "y1": 63.14008444844467,
+      "x2": 1844.799926757813,
+      "y2": 64.8423650156004,
+      "offset": -6,
+      "id": "1787054084876-3e4915e20671a",
+      "view": "side",
+      "layer": "contour",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "locked": false,
+      "dimensionUnit": "cm",
+      "dimensionDecimals": 0
+    },
+    {
+      "type": "rect",
+      "x": 4012.2047784386814,
+      "y": 1959.9999999999975,
+      "width": 13686.461399946738,
+      "height": 12007.855800213467,
+      "fillMode": "horizontalHatch",
+      "id": "1787140132454-168b7f0d87b8b",
+      "view": "front",
+      "layer": "layer-1787140154415-d2e0e200fe499",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "cornerMode": "square",
+      "cornerSize": 0,
+      "locked": false
+    },
+    {
+      "type": "dimension",
+      "x1": 14682.4001734993,
+      "y1": 2244.860405152827,
+      "x2": 16922.4001734993,
+      "y2": 4484.860405152826,
+      "offset": 22,
+      "id": "1787140520671-120ea4addadbf8",
+      "view": "front",
+      "layer": "dimension",
+      "style": "solid",
+      "strokeWidth": 0.75,
+      "stroke": "#263238",
+      "name": "",
+      "locked": false,
+      "dimensionDecimals": 0
     }
   ],
   "settings": {
     "grid": true,
     "snap": true,
-    "zoom": 0.7971938775510204,
+    "zoom": 0.8928571428571436,
     "scale": 3,
     "autoScale": false,
     "dimensionStyle": {
@@ -398,13 +734,6 @@
     },
     "layers": [
       {
-        "id": "contour",
-        "name": "Kontur",
-        "visible": true,
-        "locked": false,
-        "printable": true
-      },
-      {
         "id": "axis",
         "name": "Achsen",
         "visible": true,
@@ -419,6 +748,13 @@
         "printable": true
       },
       {
+        "id": "layer-1787140154415-d2e0e200fe499",
+        "name": "Rückwand",
+        "visible": false,
+        "locked": false,
+        "printable": true
+      },
+      {
         "id": "text",
         "name": "Text",
         "visible": true,
@@ -426,11 +762,11 @@
         "printable": true
       },
       {
-        "id": "guide",
-        "name": "Hilfslinien",
+        "id": "contour",
+        "name": "Kontur",
         "visible": true,
         "locked": false,
-        "printable": false
+        "printable": true
       }
     ],
     "activeLayer": "contour",
@@ -439,17 +775,17 @@
         "scale": 3,
         "autoScale": false,
         "viewBox": {
-          "x": -73.87199999999999,
-          "y": -74.90400000000005,
-          "width": 1505.28,
-          "height": 953.3439999999999
+          "x": -2.109761078065752,
+          "y": -3.847209989327114,
+          "width": 1343.9999999999989,
+          "height": 851.1999999999994
         },
         "layerVisibility": {
-          "contour": true,
           "axis": true,
           "dimension": true,
+          "layer-1787140154415-d2e0e200fe499": false,
           "text": true,
-          "guide": true
+          "contour": true
         },
         "exportX": null,
         "exportY": null
@@ -458,10 +794,10 @@
         "scale": 3,
         "autoScale": false,
         "viewBox": {
-          "x": -151.76639999999998,
-          "y": -112.9391999999998,
-          "width": 1505.28,
-          "height": 953.3439999999999
+          "x": -4.914242999661249,
+          "y": -7.087209989327137,
+          "width": 1343.9999999999993,
+          "height": 851.1999999999995
         },
         "layerVisibility": {
           "contour": true,
@@ -486,6 +822,24 @@
           "contour": true,
           "axis": true,
           "dimension": true,
+          "text": true
+        },
+        "exportX": null,
+        "exportY": null
+      },
+      "top": {
+        "scale": 20,
+        "autoScale": true,
+        "viewBox": {
+          "x": 0,
+          "y": 0,
+          "width": 1200,
+          "height": 760
+        },
+        "layerVisibility": {
+          "contour": true,
+          "axis": true,
+          "dimension": true,
           "text": true,
           "guide": true
         },
@@ -494,6 +848,6 @@
       }
     },
     "exportScaleMode": "manual",
-    "exportScale": 10
+    "exportScale": 16
   }
 }
