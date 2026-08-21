@@ -78,6 +78,15 @@ test('carpentry automatic dimensions are disabled at the dimension factory', () 
   assert.match(appSource, /const carpentryToolIds = new Set/);
 });
 
+test('centering drill stays anchored at the click start point', () => {
+  const branch = appSource.match(/if \(state\.tool === 'zentrierbohrung'\) \{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.match(branch, /const radius = Math\.max\(8, distance\(start, end\)\)/);
+  assert.doesNotMatch(branch, /midX|midY/);
+  assert.match(branch, /circle\(start\.x, start\.y/);
+  assert.match(branch, /line\(start\.x - axisLength, start\.y/);
+  assert.match(branch, /line\(start\.x, start\.y - axisLength/);
+});
+
 test('only one save and load implementation remains', () => {
   assert.equal((appSource.match(/function saveProject\s*\(/g) || []).length, 0);
   assert.equal((appSource.match(/function loadProject\s*\(/g) || []).length, 0);

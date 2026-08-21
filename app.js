@@ -1246,9 +1246,9 @@ function createWoodGeometry(start, end) {
     return [circle(start.x, start.y, radius), line(start.x - axisLength, start.y, start.x + axisLength, start.y, 'center'), line(start.x, start.y - axisLength, start.x, start.y + axisLength, 'center')];
   }
   if (state.tool === 'zentrierbohrung') {
-    const radius = Math.max(8, Math.min(box.width, box.height) * 0.12);
+    const radius = Math.max(8, distance(start, end));
     const axisLength = radius * 4;
-    return [circle(midX, midY, radius * 1.6), circle(midX, midY, radius), line(midX - axisLength, midY, midX + axisLength, midY, 'center'), line(midX, midY - axisLength, midX, midY + axisLength, 'center')];
+    return [circle(start.x, start.y, radius * 1.6), circle(start.x, start.y, radius), line(start.x - axisLength, start.y, start.x + axisLength, start.y, 'center'), line(start.x, start.y - axisLength, start.x, start.y + axisLength, 'center')];
   }
   if (state.tool === 'senkbohrung') {
     const radius = Math.max(16, Math.min(box.width, box.height) * 0.2);
