@@ -10,6 +10,12 @@ Die Darstellung orientiert sich an den üblichen Konventionen technischer Zeichn
 
 `Start-Zeichenprogramm.bat` doppelklicken oder `index.html` im Browser öffnen.
 
+## Tests
+
+Die automatischen Kernfunktionstests lassen sich mit Node.js aus dem Projektordner starten:
+
+`node --test tests/app.test.js`
+
 ## Funktionsübersicht
 
 - Technische Grundformen, Texte und Bemaßungen
