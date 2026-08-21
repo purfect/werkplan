@@ -442,11 +442,13 @@ function updateDimensionStyleFromControls() {
   const style = dimensionStyle();
   style.endStyle = document.querySelector('#dimensionEndStyle')?.value || 'arrow';
   style.textSize = Math.max(8, Math.min(32, Number(document.querySelector('#dimensionTextSize')?.value) || 14));
-  style.defaultOffset = Math.max(-120, Math.min(120, Number(document.querySelector('#dimensionDefaultOffset')?.value) || 22));
+  const offset = Number(document.querySelector('#dimensionDefaultOffset')?.value);
+  style.defaultOffset = clampDimensionOffset(Number.isFinite(offset) ? offset : 22);
   style.unit = document.querySelector('#dimensionUnit')?.value || 'auto';
   style.decimals = Math.max(0, Math.min(3, Number(document.querySelector('#dimensionDecimals')?.value) || 0));
   state.dimensionStyle = style;
 }
+function clampDimensionOffset(value) { return Math.max(-500, Math.min(500, Number.isFinite(Number(value)) ? Number(value) : 22)); }
 function syncDimensionStyleControls() {
   const style = dimensionStyle();
   if (document.querySelector('#dimensionEndStyle')) document.querySelector('#dimensionEndStyle').value = style.endStyle;
@@ -1590,7 +1592,7 @@ function unitInput(name, value, unit = 'mm', attrs = '') {
 }
 function geometryFields(object) {
   const real = value => calibratedLength(value, object);
-  if (object.type === 'line' || object.type === 'dimension') return `<label>X1 ${unitInput('x1', real(object.x1))}</label><label>Y1 ${unitInput('y1', real(object.y1))}</label><label>X2 ${unitInput('x2', real(object.x2))}</label><label>Y2 ${unitInput('y2', real(object.y2))}</label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand ${unitInput('offset', Number.isFinite(Number(object.offset)) ? object.offset : dimensionStyle().defaultOffset, 'px')}</label><label>Einheit<select name="dimensionUnit"><option value="">Global</option><option value="auto">Auto</option><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label><label>Nachkommastellen<input name="dimensionDecimals" type="number" min="0" max="3" step="1" value="${object.dimensionDecimals ?? ''}" placeholder="${dimensionStyle().decimals}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
+  if (object.type === 'line' || object.type === 'dimension') return `<label>X1 ${unitInput('x1', real(object.x1))}</label><label>Y1 ${unitInput('y1', real(object.y1))}</label><label>X2 ${unitInput('x2', real(object.x2))}</label><label>Y2 ${unitInput('y2', real(object.y2))}</label>${object.type === 'dimension' ? `<label class="wide-field">Maßlinienabstand ${unitInput('offset', clampDimensionOffset(object.offset), 'px', 'min="-500" max="500"')}</label><label>Einheit<select name="dimensionUnit"><option value="">Global</option><option value="auto">Auto</option><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label><label>Nachkommastellen<input name="dimensionDecimals" type="number" min="0" max="3" step="1" value="${object.dimensionDecimals ?? ''}" placeholder="${dimensionStyle().decimals}"></label><label class="wide-field">Maßtext manuell<input name="labelOverride" type="text" placeholder="leer = automatisch" value="${escapeHtml(object.labelOverride || '')}"></label>` : ''}`;
   if (object.type === 'circle') return `<label>X Mitte ${unitInput('x', real(object.x))}</label><label>Y Mitte ${unitInput('y', real(object.y))}</label><label class="wide-field">Radius ${unitInput('r', real(object.r), 'mm', 'min="1"')}</label>`;
   if (object.type === 'semicircle') return `<label>X Mitte ${unitInput('x', real(object.x))}</label><label>Y Mitte ${unitInput('y', real(object.y))}</label><label>Radius ${unitInput('r', real(object.r), 'mm', 'min="1"')}</label><label>Winkel ${unitInput('angleDeg', Math.round(((object.angle || 0) * 180 / Math.PI + 360) % 360), '°')}</label>`;
   if (object.type === 'ellipse' || object.type === 'ellipseArc') return `<label>X Mitte ${unitInput('x', real(object.x))}</label><label>Y Mitte ${unitInput('y', real(object.y))}</label><label>Radius X ${unitInput('rx', real(object.rx), 'mm', 'min="1"')}</label><label>Radius Y ${unitInput('ry', real(object.ry), 'mm', 'min="1"')}</label>`;
@@ -1847,6 +1849,7 @@ function applySelectedChanges() {
   if ((object.type === 'dimension' || object.type === 'angleDimension') && !String(object.labelOverride || '').trim()) delete object.labelOverride;
   if (object.type === 'dimension' && !object.dimensionUnit) delete object.dimensionUnit;
   if (object.type === 'dimension' && object.dimensionDecimals === '') delete object.dimensionDecimals;
+  if (object.type === 'dimension') object.offset = clampDimensionOffset(object.offset);
   if (object.type === 'rect') { object.width = Math.max(1, object.width); object.height = Math.max(1, object.height); }
   if ((object.type === 'circle' || object.type === 'semicircle' || object.type === 'angleDimension') && (!Number.isFinite(object.r) || object.r < 1)) object.r = 1;
   if (object.strokeWidth < 0.25 || !Number.isFinite(object.strokeWidth)) object.strokeWidth = 0.75;
@@ -1971,7 +1974,21 @@ function syncLinkedDimensions(object) {
     else { item.x1 = object.x; item.y1 = object.y; item.x2 = a.x; item.y2 = a.y; }
   });
 }
-function deleteSelected() { if (!selectedIds.size && !selectedId) return; pushHistory(); const ids = selectedIds.size ? new Set(selectedIds) : new Set([selectedId]); state.objects = state.objects.filter(object => !ids.has(object.id)); selectedId = null; selectedIds.clear(); propertyPanel.innerHTML = '<div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div>'; document.querySelector('#selectionCount').textContent = 'Nichts ausgewählt'; render(); setStatus(`${ids.size} Objekt(e) gelöscht`); }
+function deleteSelected() {
+  if (!selectedIds.size && !selectedId) return;
+  const ids = selectedIds.size ? new Set(selectedIds) : new Set([selectedId]);
+  const linkedDimension = object => object.type === 'dimension'
+    ? ids.has(object.sourceRectId) || ids.has(object.sourceObjectId)
+    : object.type === 'angleDimension' && Array.isArray(object.sourceObjectIds) && object.sourceObjectIds.some(id => ids.has(id));
+  pushHistory();
+  const deletedIds = new Set([...ids, ...state.objects.filter(linkedDimension).map(object => object.id)]);
+  state.objects = state.objects.filter(object => !deletedIds.has(object.id));
+  state.materials.forEach(item => {
+    item.objectIds = materialObjectIds(item).filter(id => !deletedIds.has(id));
+    if (item.objectId && deletedIds.has(item.objectId)) delete item.objectId;
+  });
+  selectedId = null; selectedIds.clear(); propertyPanel.innerHTML = '<div class="property-empty">Objekt anklicken, um seine Eigenschaften zu sehen.</div>'; document.querySelector('#selectionCount').textContent = 'Nichts ausgewählt'; render(); setStatus(`${ids.size} Objekt(e) gelöscht`);
+}
 function copySelected() {
   const objects = selectedObjects(); if (!objects.length) return;
   const selectedSourceIds = new Set(objects.map(object => object.id));
@@ -2210,7 +2227,7 @@ function handlePointerMove(event) {
       const lineDy = draggingObject.y2 - draggingObject.y1;
       const lineLength = Math.hypot(lineDx, lineDy) || 1;
       const normal = { x: -lineDy / lineLength, y: lineDx / lineLength };
-      draggingObject.offset = (Number.isFinite(Number(draggingObject.offset)) ? Number(draggingObject.offset) : dimensionStyle().defaultOffset) + (dx / drawingScale()) * normal.x + (dy / drawingScale()) * normal.y;
+      draggingObject.offset = clampDimensionOffset((Number.isFinite(Number(draggingObject.offset)) ? Number(draggingObject.offset) : dimensionStyle().defaultOffset) + (dx / drawingScale()) * normal.x + (dy / drawingScale()) * normal.y);
     } else draggingObjects.forEach(object => translateObject(object, dx, dy));
     dragChanged = true;
     pointerStart = point;
@@ -2290,9 +2307,7 @@ function handlePointerUp(event) {
   if (state.tool === 'rect') addObject({ type: 'rect', x: Math.min(start.x, endPoint.x), y: Math.min(start.y, endPoint.y), width: Math.abs(endPoint.x - start.x), height: Math.abs(endPoint.y - start.y), fillMode: 'none' });
 }
 function setTool(tool) { state.tool = tool; document.querySelectorAll('.tool-button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool || button.dataset.planned === tool)); document.querySelector('#toolHint').textContent = `${toolNames[tool] || woodToolNames[tool] || tool} aktiv`; document.querySelector('#lineLengthPanel').hidden = !(['line', 'dimension', 'rect', 'circle', 'semicircle', 'ellipse', 'ellipseArc', 'slot', 'polygon'].includes(tool) || isWoodTool(tool)); updateLiveAngle(null, null); clearPreview(); polylinePoints = []; }
-function saveProject() { state.projectName = document.querySelector('#projectName').value || 'Projekt01'; const data = { app: 'Werkplan', version: 2, unit: 'mm', projectName: state.projectName, objects: state.objects, settings: { grid: state.grid, snap: state.snap, zoom: state.zoom, scale: state.scale } }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${state.projectName.replace(/[^a-z0-9_-]+/gi, '_')}.werkplan`; link.click(); URL.revokeObjectURL(link.href); setStatus('Projekt gespeichert'); }
-function loadProject(file) { const reader = new FileReader(); reader.onload = () => { try { const data = JSON.parse(reader.result); pushHistory(); state.objects = Array.isArray(data.objects) ? data.objects : []; state.projectName = data.projectName || 'Projekt01'; document.querySelector('#projectName').value = state.projectName; state.grid = data.settings?.grid ?? true; state.snap = data.settings?.snap ?? true; state.scale = Number(data.settings?.scale) > 0 ? Number(data.settings.scale) : 1; syncScaleControls(); document.querySelector('#gridToggle').checked = state.grid; document.querySelector('#snapToggle').checked = state.snap; selectedId = null; render(); setStatus('Projekt geladen'); } catch { setStatus('Datei konnte nicht gelesen werden'); } }; reader.readAsText(file); }
-function exportSvg() { const copy = canvas.cloneNode(true); copy.querySelector('#previewLayer')?.remove(); const source = new XMLSerializer().serializeToString(copy); const blob = new Blob([source], { type: 'image/svg+xml' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${state.projectName || 'werkplan'}.svg`; link.click(); URL.revokeObjectURL(link.href); setStatus('SVG exportiert'); }
+function exportSvg() { exportSheetSvg(); }
 function fileBaseName() { updateProjectMetaFromForm(); return (state.projectName || 'werkplan').replace(/[^a-z0-9_-]+/gi, '_'); }
 function downloadBlob(blob, filename) { const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
 function exportPoint(value, min, scale, offset = sheet.margin) { return offset + (value - min) / scale; }
@@ -2614,23 +2629,26 @@ async function exportPdf() {
   downloadBlob(pdf, `${fileBaseName()}.pdf`);
   setStatus('PDF exportiert');
 }
+function projectDataFromState(projectState) {
+  return {
+    app: 'Werkplan',
+    version: 13,
+    unit: 'mm',
+    projectName: projectState.projectName,
+    drawingNumber: projectState.drawingNumber,
+    drawnBy: projectState.drawnBy,
+    projectDate: projectState.projectDate,
+    materials: projectState.materials,
+    objects: projectState.objects,
+    settings: { grid: projectState.grid, snap: projectState.snap, snapModes: projectState.snapModes, zoom: projectState.zoom, scale: projectState.scale, autoScale: projectState.autoScale, dimensionStyle: projectState.dimensionStyle, sheetFormat: projectState.sheetFormat, sheetOrientation: projectState.sheetOrientation, enabledViews: projectState.enabledViews, activeView: projectState.activeView, viewReferences: projectState.viewReferences, layers: projectState.layers, activeLayer: projectState.activeLayer, viewSettings: projectState.viewSettings, exportScaleMode: projectState.exportScaleMode, exportScale: projectState.exportScale }
+  };
+}
 saveProject = function() {
   updateDimensionStyleFromControls();
   updateProjectMetaFromForm();
   updateMaterialsFromForm();
   saveActiveViewSettings();
-  const data = {
-    app: 'Werkplan',
-    version: 13,
-    unit: 'mm',
-    projectName: state.projectName,
-    drawingNumber: state.drawingNumber,
-    drawnBy: state.drawnBy,
-    projectDate: state.projectDate,
-    materials: state.materials,
-    objects: state.objects,
-    settings: { grid: state.grid, snap: state.snap, snapModes: state.snapModes, zoom: state.zoom, scale: state.scale, autoScale: state.autoScale, dimensionStyle: state.dimensionStyle, sheetFormat: state.sheetFormat, sheetOrientation: state.sheetOrientation, enabledViews: enabledViews(), activeView: state.activeView, viewReferences: state.viewReferences, layers: state.layers, activeLayer: state.activeLayer, viewSettings: state.viewSettings, exportScaleMode: state.exportScaleMode, exportScale: state.exportScale }
-  };
+  const data = projectDataFromState({ ...state, enabledViews: enabledViews() });
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${fileBaseName()}.werkplan`);
   setDirty(false);
   setStatus('Projekt gespeichert');
