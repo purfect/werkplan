@@ -83,6 +83,7 @@ const sheet = { width: 1200, height: 760, margin: 50, titleHeight: 118 };
 const scaleSteps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
 const toolNames = { select: 'Auswahl', line: 'Linie', circle: 'Kreis', semicircle: 'Halbkreis', rect: 'Rechteck', dimension: 'Bemaßung', angleDimension: 'Winkelmaß', text: 'Text', polyline: 'Polylinie', ellipse: 'Ellipse', ellipseArc: 'Ellipsenbogen', slot: 'Langloch', polygon: 'Polygon', smartTrim: 'Bis Schnittkante trimmen', smartExtend: 'Bis Schnittkante verlängern' };
 const woodToolNames = { zapfenSchlitz: 'Zapfen und Schlitz', ueberblattung: 'Überblattung', fingerzinken: 'Fingerzinken', schwalbenschwanz: 'Schwalbenschwanzzinken', duebel: 'Dübel', duebelsatz: 'Dübelplatzierung', nutFeder: 'Nut und Feder', bohrung: 'Bohrung', zentrierbohrung: 'Zentrierbohrung', senkbohrung: 'Senkbohrung', lochkreis: 'Lochkreis', eckverbindung: 'Eckverbindung', scharnier: 'Scharnier', schnittlinie: 'Schnittlinie', freihandkurve: 'Freihandkurve', bezierkurve: 'Bézierkurve', ornamentsegment: 'Ornamentsegment', rosette: 'Rosette', blatt: 'Blatt', bluete: 'Blüte', ranke: 'Ranke', reliefprofil: 'Reliefprofil', symmetrieachse: 'Symmetrieachse', drehachse: 'Drehachse', kehle: 'Kehle', kegel: 'Kegel', kegelstumpf: 'Kegelstumpf', schalenprofil: 'Schalenprofil', absatz: 'Absatz', zapfen: 'Zapfen', wandstaerke: 'Wandstärke', bohrtiefe: 'Bohrtiefe', fachwerkWand: 'Fachwerkwand', schwelle: 'Schwelle', raehm: 'Rähm', staender: 'Ständer', riegel: 'Riegel', strebe: 'Strebe', kopfband: 'Kopfband', fussband: 'Fußband', andreaskreuz: 'Andreaskreuz', fensterGefach: 'Fenstergefach', tuerGefach: 'Türgefach', dachstuhl: 'Dachstuhl', staenderZapfen: 'Ständer mit Zapfen', strebenUeberblattung: 'Streben-Überblattung', strebenVersatz: 'Strebenversatz', schwalbenschwanzblatt: 'Schwalbenschwanzblatt', holznaegel: 'Holznägel', sparren: 'Sparren', pfette: 'Pfette', kehlbalken: 'Kehlbalken', first: 'First', stuhlstaender: 'Stuhlständer', dachKopfband: 'Dach-Kopfband' };
+const carpentryToolIds = new Set(['fachwerkWand', 'schwelle', 'raehm', 'staender', 'riegel', 'strebe', 'kopfband', 'fussband', 'andreaskreuz', 'fensterGefach', 'tuerGefach', 'dachstuhl', 'staenderZapfen', 'strebenUeberblattung', 'strebenVersatz', 'schwalbenschwanzblatt', 'holznaegel', 'sparren', 'pfette', 'kehlbalken', 'first', 'stuhlstaender', 'dachKopfband']);
 const toolOrder = ['select', 'line', 'circle', 'semicircle', 'rect', 'dimension', 'text'];
 const viewNames = { front: 'Frontansicht', side: 'Seitenansicht', top: 'Draufsicht', detail: 'Detail' };
 const viewOrder = ['front', 'side', 'top', 'detail'];
@@ -1059,6 +1060,7 @@ function renderMaterialMarkers() {
 }
 function newId() { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 function isWoodTool(tool = state.tool) { return Object.hasOwn(woodToolNames, tool); }
+function isCarpentryTool(tool = state.tool) { return carpentryToolIds.has(tool); }
 function woodStyle(type, geometry) { return { ...geometry, type, id: newId(), view: state.activeView, layer: geometry.layer || state.activeLayer, style: geometry.style || state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }; }
 function woodBounds(start, end) {
   const exactEnd = exactRectEndPoint(start, end);
@@ -1066,7 +1068,9 @@ function woodBounds(start, end) {
 }
 function addWoodObjects(objects) {
   if (!objects.length) return;
-  pushHistory(); const groupId = `holz-${newId()}`; const toolName = woodToolNames[state.tool]; const created = objects.map((object, index) => ({ ...object, groupId, name: objects.length > 1 ? `${toolName} ${index + 1}` : toolName, woodTool: state.tool })); state.objects.push(...created); selectedIds = new Set(created.map(object => object.id)); selectedId = created.at(-1).id; render(); setStatus(`${toolName} gezeichnet`);
+  const visibleObjects = objects.filter(Boolean);
+  if (!visibleObjects.length) return;
+  pushHistory(); const groupId = `holz-${newId()}`; const toolName = woodToolNames[state.tool]; const created = visibleObjects.map((object, index) => ({ ...object, groupId, name: visibleObjects.length > 1 ? `${toolName} ${index + 1}` : toolName, woodTool: state.tool })); state.objects.push(...created); selectedIds = new Set(created.map(object => object.id)); selectedId = created.at(-1).id; render(); setStatus(`${toolName} gezeichnet`);
 }
 function createWoodGeometry(start, end) {
   const box = woodBounds(start, end); const x2 = box.x + box.width; const y2 = box.y + box.height; const midX = box.x + box.width / 2; const midY = box.y + box.height / 2;
@@ -1076,7 +1080,7 @@ function createWoodGeometry(start, end) {
   const polyline = points => woodStyle('polyline', { points });
   const polygon = points => woodStyle('polygon', { points });
   const text = (x, y, value) => woodStyle('text', { x, y, value, layer: 'text' });
-  const dimension = (x1, y1, x2Value, y2Value, offset = dimensionStyle().defaultOffset) => woodStyle('dimension', { x1, y1, x2: x2Value, y2: y2Value, offset, layer: 'dimension' });
+  const dimension = (x1, y1, x2Value, y2Value, offset = dimensionStyle().defaultOffset) => isCarpentryTool() ? null : woodStyle('dimension', { x1, y1, x2: x2Value, y2: y2Value, offset, layer: 'dimension' });
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const timber = clamp(Math.min(box.width, box.height) * .12, 18, 70);
   const beam = (x, y, width, height) => rect(x, y, Math.max(10, width), Math.max(10, height));
@@ -2232,7 +2236,7 @@ function handlePointerMove(event) {
   if (state.tool === 'slot') { clearPreview(); renderObject({ type: 'slot', x1: pointerStart.x, y1: pointerStart.y, x2: point.x, y2: point.y, width: Number(document.querySelector('#targetRectHeight')?.value) || 200, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
   if (state.tool === 'polygon') { clearPreview(); const sides = Math.max(3, Math.min(24, Number(document.querySelector('#polygonSides')?.value) || 6)); const radius = distance(pointerStart, point); const angle = Math.atan2(point.y - pointerStart.y, point.x - pointerStart.x); const points = Array.from({ length: sides }, (_, index) => polarPoint(pointerStart, radius, angle + index * Math.PI * 2 / sides)); renderObject({ type: 'polygon', points, style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
   if (state.tool === 'rect') { clearPreview(); const end = exactRectEndPoint(pointerStart, point); const x = Math.min(pointerStart.x, end.x); const y = Math.min(pointerStart.y, end.y); renderObject({ type: 'rect', x, y, width: Math.abs(end.x - pointerStart.x), height: Math.abs(end.y - pointerStart.y), style: state.style, strokeWidth: state.strokeWidth, stroke: state.strokeColor }, previewLayer); }
-  if (isWoodTool() && state.tool !== 'freihandkurve') { clearPreview(); createWoodGeometry(pointerStart, point).forEach(object => renderObject(object, previewLayer)); }
+  if (isWoodTool() && state.tool !== 'freihandkurve') { clearPreview(); createWoodGeometry(pointerStart, point).filter(Boolean).forEach(object => renderObject(object, previewLayer)); }
 }
 function handlePointerUp(event) {
   if (selectionBoxStart) {
